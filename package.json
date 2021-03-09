@@ -1,0 +1,17 @@
+{
+  "name": "dogovor_rest",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": ""
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "colors": "^1.4.0",
+    "express": "^4.17.1",
+    "express-async-handler": "^1.1.4",
+    "mysql2": "^2.2.5"
+  }
+}
