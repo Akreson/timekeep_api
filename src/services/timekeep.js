@@ -118,6 +118,7 @@ const prepareDivisionTimekeepAggr = (completeArray, users, date, absentType) => 
 
       aggregatedUserResult[user.id_user] = {
         name: user.name,
+        timeType: user.time_worked_type,
         // date obj
         start: startTime,
         end: endTime,
@@ -131,32 +132,52 @@ const prepareDivisionTimekeepAggr = (completeArray, users, date, absentType) => 
   return aggregatedUserResult;
 }
 
-const setUserTimekeepLogTime = (userObj, log) => {
+// TODO: DEBUG!!!!!!!!!!
+const setUserStricTimekeepLogTime = (userObj, log) => {
   const logTime = log.time.getTime();
 
   // 1 - in, 0 - out
   if (log.direction === 1) {
-    if (userObj.firstIn === null) {
+    if ((userObj.firstIn === null) || (userObj.lastOut === null)) {
       userObj.firstIn = logTime;
     } else {
-      if (logTime < userObj.firstIn)  userObj.firstIn = logTime
+      if (logTime < userObj.firstIn) userObj.firstIn = logTime
     }
   }
   else if (log.direction === 0) {
     if (userObj.lastOut === null) {
       userObj.lastOut = logTime;
     } else {
-      if (logTime > userObj.lastOut)  userObj.lastOut = logTime
+      if (logTime > userObj.lastOut) userObj.lastOut = logTime
     }
   }
+}
+
+const setUserNotStricTimekeepLogTime = (userObj, log) => {
+  const logTime = log.time.getTime();
+  
+  if (log.direction === 1) {
+    if (userObj.firstIn === null) {
+      userObj.firstIn = logTime;
+    } else {
+      if (logTime > userObj.firstIn)  userObj.lastOut = logTime
+    }
+  }
+}
+
+const calcStricWorkTime = (start, end) => {
+
+}
+
+const calcNotStricWorkTime = (start, end) => {
+
 }
 
 exports.processGetDivisionStat = async (divisionID, date) => {
   let result = [];
   
-  const currentDate = DateUtils.getNowDate();
   const timeRange = DateUtils.getTimeRangeForDate(date);
-
+  
   let pendingReq = [];
   pendingReq.push(dbCon.castQuery(sqlQueryList.getAbsentType));
   pendingReq.push(dbCon.castQuery(
@@ -164,26 +185,81 @@ exports.processGetDivisionStat = async (divisionID, date) => {
 
   const [absentType, users] = await dbCon.gather(pendingReq);
   if (!users.length) return null;
-
+  
   const timekeepLogPendingReq = dbCon.castQuery(
     sqlQueryList.getDivisionTimekeepLog, [divisionID, timeRange.low.str, timeRange.high.str]);
-
+    
   let aggregatedUser = prepareDivisionTimekeepAggr(result, users, timeRange.low.date, absentType);
   let timekeepLog = await dbCon.getResponse(timekeepLogPendingReq);
-
+  
   timekeepLog.forEach(log => {
     let userObj = aggregatedUser[log.id_user];
-    setUserTimekeepLogTime(userObj, log);
+    console.log(userObj)
+    if (userObj.timeType === 1) {
+      setUserStricTimekeepLogTime(userObj, log);
+    } else if (userObj.timeType === 2) {
+      setUserNotStricTimekeepLogTime(userObj, log);
+    }
   });
 
+  console.log(aggregatedUser);
+
+  const currentDate = DateUtils.getNowDate();
+  const currentTime = (new Date()).getTime();
   const islookAtCurrDate = timeRange.low.date.getTime() === currentDate.getTime();
-  for (const [id, value] in aggregatedUser) {
-    const startTime = value.start.getTime();
-    //const endTime = value.end.getTime();
-    const startDiff = startTime - value.firstIn;
-    // TODO: CONTINUE
-    //if (startDiff < 0)
+
+  for (const key in aggregatedUser) {
+    const userLog = aggregatedUser[key];
+    
+    let userResult = {
+      name: userLog.name,
+      absentType: null,
+      enter: null,
+      exit: null,
+      worked: null
+    };
+
+    const startTime = userLog.start.getTime();
+    const endTime = userLog.end.getTime();
+    
+    if (userLog.firstIn !== null)  {
+      const enterDate = new Date(userLog.firstIn);
+      userResult.enter = DateUtils.getTimePartStr(enterDate);
+      
+      if (startTime < userLog.firstIn) {
+        userResult.absentType = "Опоздание";
+      }
+    }
+
+    if (userLog.lastOut !== null)  {
+      const exitDate = new Date(userLog.lastOut);
+      userResult.exit = DateUtils.getTimePartStr(exitDate);
+
+      if (islookAtCurrDate && (currentTime > endTime)) {
+        if (endTime > userLog.lastOut) {
+          userResult.absentType = "Ранний уход";
+        }
+      }
+    }
+
+    if ((userLog.firstIn !== null) && (userLog.lastOut !== null))  {
+      ///
+      const workedTime = new Date(userLog.lastOut - userLog.firstIn);
+      userResult.worked = DateUtils.getTimePartStr(workedTime);
+      console.log(userLog.name, workedTime, workedTime.getHours());
+      ///
+    }
+
+    if (((userLog.firstIn !== null) && (userLog.lastOut == null)) || 
+    ((userLog.firstIn === null) && (userLog.lastOut !== null)))
+    {
+      userResult.absentType = "Опоздание";
+    }
+    
+    result.push(userResult);
   }
 
-  console.log(aggregatedUser);
+  result.sort((a, b) => a.name.localeCompare(b.name));
+
+  //console.log(result);
 }

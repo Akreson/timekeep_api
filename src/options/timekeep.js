@@ -12,6 +12,7 @@ exports.sqlQueryList = {
         name, 
         CONVERT(begin_workday, TIME) as begin_workday,
         CONVERT(end_workday, TIME) as end_workday,
+        time_worked_type,
         AbsentLog.absent_id
       FROM 
         Employees
@@ -45,30 +46,6 @@ exports.sqlQueryList = {
         AND
         Employees.department_id = ?
       WHERE 
-        DATE(ControllersLog.dt_event) between DATE(?) and DATE(?);`,
+        DATE(ControllersLog.dt_event) between DATE(?) and DATE(?)
+      ORDER BY time;`,
 };
-
-// SELECT
-// 	*
-// FROM 
-//  ControllersLog 
-// INNER JOIN Controllers ON Controllers.use_timekeeping = 1
-// 	and ControllersLog.id_controller = Controllers.id_controller
-// WHERE 
-// 	ControllersLog.dt_event between '2016-03-22' and '2016-03-22 23:59:59'
-// AND
-//  id_user IN ('pl13021992kdv', 'pl141283nav');
-
-// SELECT
-// 	ControllersLog.direction,
-//     TIME(ControllersLog.dt_event) as time,
-//     ControllersLog.id_user
-// FROM 
-// 	ControllersLog 
-// INNER JOIN Controllers ON
-// 	Controllers.use_timekeeping = 1
-// 	and ControllersLog.id_controller = Controllers.id_controller
-// WHERE 
-// 	ControllersLog.dt_event between ? and ?
-// and
-//     ControllersLog.id_user IN (?);
