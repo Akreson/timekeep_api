@@ -4,6 +4,7 @@ class DateUtils {
   static minutesToMillisec = 60*1000;
   static hoursToMillisec = 60*60*1000;
   static daysToMillisec = 24*60*60*1000;
+  static timezoneInMinutes = (new Date()).getTimezoneOffset();
   
   constructor() {}
 
@@ -65,16 +66,24 @@ class DateUtils {
     return `${hours}:${minutes}:${seconds}`;
   }
 
+  static getUTCTimePartStr(date) {
+    let hours = date.getUTCHours();
+    let minutes = date.getUTCMinutes();
+    let seconds = date.getUTCSeconds();
+
+    hours = hours < 10 ? '0' + hours : hours;
+    minutes = minutes < 10 ? '0' + minutes : minutes;
+    seconds = seconds < 10 ? '0' + seconds : seconds;
+
+    return `${hours}:${minutes}:${seconds}`;
+  }
+
   static setTimeFromStr(date, timeStr) {
     let resultDate = new Date(date);
     const [hours, minutes, seconds] = timeStr.split(":").map(item => Number(item));
     resultDate.setHours(hours, minutes, seconds);
 
     return resultDate;
-  }
-
-  static millisecToTimeStr(millisec) {
-
   }
 
   static getNowDate(passDate) {
@@ -116,8 +125,33 @@ class DateUtils {
     return date;
   }
 
+  static getTimezoneInMillisec() {
+    const offset = -DateUtils.timezoneInMinutes * DateUtils.hoursToMillisec;
+    return offset;
+  }
+
+  // less then
+  static areDatePartLt(date1, date2) {
+    const dateObj1 = DateUtils.getDatePartObj(date1);
+    const dateObj2 = DateUtils.getDatePartObj(date2);
+
+    return dateObj1.getTime() < dateObj2.getTime();
+  }
+
+  // greater thern
+  static areDatePartGt(date1, date2) {
+    const dateObj1 = DateUtils.getDatePartObj(date1);
+    const dateObj2 = DateUtils.getDatePartObj(date2);
+
+    return dateObj1.getTime() > dateObj2.getTime();
+  }
+
+  // equal
   static areDatePartEq(date1, date2) {
-    
+    const dateObj1 = DateUtils.getDatePartObj(date1);
+    const dateObj2 = DateUtils.getDatePartObj(date2);
+
+    return dateObj1.getTime() === dateObj2.getTime();
   }
 }
 

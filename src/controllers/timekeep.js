@@ -1,10 +1,6 @@
 const asynchandler = require("express-async-handler");
 const ErrorResponse = require("../utils/error-response")
-
-const {
-  getNowDate,
-  getTimeRangeForDay
-} = require("../utils/shared");
+const DateUtils = require("../utils/date");
 
 const {
     processGetUserDepartAccessList,
@@ -77,10 +73,14 @@ exports.getDvisionTimekeepInfo = asynchandler(async (req, res, next) => {
       return next(new ErrorResponse("Невірно задана дата", 400, "ValidationError"));
     }
   } else {
-    date = getNowDate();
+    date = DateUtils.getNowDate();
   }
 
   const response = await processGetDivisionStat(Number(divisionID), date);
+  if (!response) {
+    return next(new ErrorResponse("Данних не знайденно", 400, "ValidationError"));
+  }
 
-  res.json("OK");
+  const result = succsesResponse(response);
+  res.json(result);
 });
