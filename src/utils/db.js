@@ -1,4 +1,3 @@
-
 const mysql2 = require("mysql2");
 const DateUtils = require("../utils/date");
 

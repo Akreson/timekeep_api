@@ -22,6 +22,7 @@ const sortDepartByName = departsArray => {
 const buildResultDepartsHierarchy = gatheredDepartInfo => {
   let result = [];
 
+  // создаем дерево департаментов основываясь на parentID
   for (const key in gatheredDepartInfo) {
     const current = gatheredDepartInfo[key];
 
@@ -50,6 +51,7 @@ const gatherDepartHierarchy = async initUserDepart => {
     return item.department_id;
   });
   
+  // проверяем parent_id которые отсутствуют и запрашиваем их
   while (true) {
     const departReqResult = await dbCon.query(sqlQueryList.getDepartsInfo, [departIDToReq]);
   
@@ -96,18 +98,25 @@ exports.processGetUserDepartAccessList = async ldapName => {
   return result;
 }
 
+const getUserLogObj = () => {
+  let result = {
+    name: null,
+    ldapName: null,
+    absentType: null,
+    enter: null,
+    exit: null,
+    worked: null,
+    note: null,
+  };
+
+  return result;
+}
+
 const prepareDivisionTimekeepAggr = (completeArray, users, checkDate, absentTypeArr) => {
   let aggregatedUserResult = {};
   
   users.forEach(user => {
-    let userObj = {
-      name: null,
-      absentType: null,
-      enter: null,
-      exit: null,
-      worked: null,
-      note: null
-    };
+    let userObj = getUserLogObj();
 
     // опоздание, прогул, ранний уход
     const isNotTimekeepAbsent = (user.absent_id !== null) &&
@@ -119,17 +128,16 @@ const prepareDivisionTimekeepAggr = (completeArray, users, checkDate, absentType
 
     if (DateUtils.areDatePartGt(user.dt_creation, checkDate)) {
       userObj.name = user.name;
-      completeArray.push(userObj);
-    } else if (isNotTimekeepAbsent) {
-      userObj.name = user.name;
-      userObj.absentType = absentTypeArr[user.absent_id - 1].name;
+      userObj.ldapName = user.id_user;
       completeArray.push(userObj);
     } else {
       const startTime = DateUtils.setTimeFromStr(checkDate, user.begin_workday);
       const endTime = DateUtils.setTimeFromStr(checkDate, user.end_workday);
-
+      const setAbsent = isNotTimekeepAbsent ? absentTypeArr[user.absent_id - 1].name : null;
+      
       aggregatedUserResult[user.id_user] = {
         name: user.name,
+        absentType: setAbsent,
         timeType: user.time_worked_type,
         // date obj
         start: startTime,
@@ -144,7 +152,6 @@ const prepareDivisionTimekeepAggr = (completeArray, users, checkDate, absentType
   return aggregatedUserResult;
 }
 
-// TODO: DEBUG!!!!!!!!!!
 const setUserStricTimekeepLogTime = (userObj, log) => {
   const logTime = log.time.getTime();
 
@@ -200,53 +207,59 @@ const calcWorkTime = (start, end) => {
   return timeStr;
 }
 
+const setUserEnterResultStats = (userResult, userLog) => {
+  const startTime = userLog.start.getTime();
+  const enterDate = new Date(userLog.firstIn);
+  userResult.enter = DateUtils.getTimePartStr(enterDate);
+  
+  if (startTime < userLog.firstIn) {
+    const timeDiff = -(startTime - userLog.firstIn);
+    if (timeDiff > timeToAbsentMillices) {
+      userResult.absentType = "Прогул";
+    } else {
+      userResult.absentType = "Опоздание";
+    }
+  }
+}
+
+const setUserExitResultStats = (userResult, userLog, islookAtCurrDate) => {
+  const endTime = userLog.end.getTime();
+  const exitDate = new Date(userLog.lastOut);
+  userResult.exit = DateUtils.getTimePartStr(exitDate);
+
+  if (endTime > userLog.lastOut) {
+    //if (userLog.lastOut > startTime) {
+      if (!islookAtCurrDate || (currentTime > endTime)) {
+        if (userResult.absentType === "Опоздание") {
+          userResult.absentType = "Опоздание и ранний уход";
+        } else {
+          userResult.absentType = "Ранний уход";
+        }
+      }
+    //} else {
+    //  userResult.absentType = "Прогул";
+    //}
+  }
+}
+
 const aggregatedDivisionLogStats = (resultArr, aggregatedUser, timeRange) => {
   const currentDate = DateUtils.getNowDate();
   const currentTime = (new Date()).getTime();
   const islookAtCurrDate = timeRange.low.date.getTime() === currentDate.getTime();
-
+  
   for (const key in aggregatedUser) {
     const userLog = aggregatedUser[key];
     
-    let userResult = {
-      name: userLog.name,
-      absentType: null,
-      enter: null,
-      exit: null,
-      worked: null
-    };
-
-    const startTime = userLog.start.getTime();
-    const endTime = userLog.end.getTime();
+    let userResult = getUserLogObj();
+    userResult.name = userLog.name;
+    userResult.ldapName = key;
     
-    if (userLog.firstIn !== null)  {
-      const enterDate = new Date(userLog.firstIn);
-      userResult.enter = DateUtils.getTimePartStr(enterDate);
-      
-      if (startTime < userLog.firstIn) {
-        const timeDiff = -(startTime - userLog.firstIn);
-        if (timeDiff > timeToAbsentMillices) {
-          userResult.absentType = "Прогул";
-        } else {
-          userResult.absentType = "Опоздание";
-        }
-        console.log(timeDiff, timeToAbsentMillices, userResult.absentType);
-      }
+    if (userLog.firstIn !== null) {
+      setUserEnterResultStats(userResult, userLog);
     }
-
+    
     if (userLog.lastOut !== null)  {
-      const exitDate = new Date(userLog.lastOut);
-      userResult.exit = DateUtils.getTimePartStr(exitDate);
-
-      if (endTime > userLog.lastOut) {
-        if (!islookAtCurrDate || (currentTime > endTime)) {
-          if (userResult.absentType === "Опоздание") {
-            userResult.absentType = "Опоздание и ранний уход";
-          } else {
-            userResult.absentType = "Ранний уход";
-          }
-        }
-      }
+      setUserExitResultStats(userResult, userLog, islookAtCurrDate);
     }
 
     if ((userLog.firstIn !== null) && (userLog.lastOut !== null))  {
@@ -255,9 +268,13 @@ const aggregatedDivisionLogStats = (resultArr, aggregatedUser, timeRange) => {
       if ((userLog.firstIn === null) && (userLog.lastOut !== null)) {
         userResult.exit = null; 
       }
-      userResult.absentType = "Прогул"
+      userResult.absentType = "Прогул";
     }
     
+    if (userLog.absentType !== null) {
+      userResult.absentType = userLog.absentType;  
+    }
+
     resultArr.push(userResult);
   }
 }
@@ -277,7 +294,7 @@ exports.processGetDivisionStat = async (divisionID, date) => {
   
   const timekeepLogPendingReq = dbCon.castQuery(
     sqlQueryList.getDivisionTimekeepLog, [divisionID, timeRange.low.str, timeRange.high.str]);
-    
+  
   let aggregatedUser = prepareDivisionTimekeepAggr(result, users, timeRange.low.date, absentType);
   let timekeepLog = await dbCon.getResponse(timekeepLogPendingReq);
   if (!timekeepLog.length) return null;

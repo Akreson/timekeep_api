@@ -12,4 +12,6 @@ timekeepRoutes.get("/read/user/departments/:ldapName", getUserDepartmentsAccessL
 // TODO: choose id or name
 timekeepRoutes.get("/read/divison/stats/:divisionID/:date", getDvisionTimekeepInfo);
 
+timekeepRoutes.get("/read/user/log/:name/:ldapName")
+
 module.exports = timekeepRoutes;
