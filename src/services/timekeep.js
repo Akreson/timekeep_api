@@ -280,7 +280,7 @@ const aggregatedDivisionLogStats = (resultArr, aggregatedUser, timeRange) => {
 }
 
 // TODO: fix error on  96 11.02.2021
-exports.processGetDivisionStat = async (divisionID, date) => {
+exports.processGetDivisionTimekeepStat = async (divisionID, date) => {
   let result = [];
   const timeRange = DateUtils.getTimeRangeForDate(date);
   

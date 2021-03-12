@@ -76,7 +76,7 @@ exports.getDvisionTimekeepInfo = asynchandler(async (req, res, next) => {
     date = DateUtils.getNowDate();
   }
 
-  const response = await processGetDivisionStat(Number(divisionID), date);
+  const response = await processGetDivisionTimekeepStat(Number(divisionID), date);
   if (!response) {
     return next(new ErrorResponse("Данних не знайденно", 400, "ValidationError"));
   }
