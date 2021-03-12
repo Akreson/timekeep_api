@@ -6,7 +6,7 @@ exports.sqlQueryList = {
     getDepartsInfo: "SELECT `id`, `is_department`, `parent_id`, `name` FROM `Departments` WHERE `id` IN (?)",
 
     // нужно передавать время в формате DATE
-    getEmployeesDivisionInfo: `
+    getEmployeesDivisionInfoWithAbsent: `
       SELECT 
         id_user, 
         name, 
@@ -49,4 +49,43 @@ exports.sqlQueryList = {
       WHERE 
         DATE(ControllersLog.dt_event) between DATE(?) and DATE(?)
       ORDER BY time;`,
+    
+    getUserTimekeepLog: `
+      SELECT
+        ControllersLog.direction,
+        ControllersLog.id_controller,
+        TIME(ControllersLog.dt_event) as time
+      FROM 
+        ControllersLog
+      WHERE 
+        DATE(ControllersLog.dt_event) between DATE(?) and DATE(?)
+      AND
+        ControllersLog.id_user = ?;`,
+      
+    getControllersMainInfo: `
+      SELECT
+        id_controller,
+        use_timekeeping,
+        name
+      FROM
+        Controllers
+      WHERE
+        id_controller IN (?);`,
+    
+    getUserInfoWithAbsent: `
+      SELECT 
+        name,
+        CONVERT(begin_workday, TIME) as begin_workday,
+        CONVERT(end_workday, TIME) as end_workday,
+        time_worked_type,
+        dt_creation,
+        AbsentLog.absent_id
+      FROM 
+        Employees
+      LEFT JOIN AbsentLog ON
+        AbsentLog.employee_id = Employees.id_user
+        AND
+        DATE(AbsentLog.date) between DATE(?) and DATE(?)
+      WHERE 
+        Employees.id_user = ?;`,
 };

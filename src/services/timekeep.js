@@ -172,6 +172,8 @@ const setUserStricTimekeepLogTime = (userObj, log) => {
   }
 }
 
+// TODO: count first in or out as first in
+// and last in or out as last out
 const setUserNotStricTimekeepLogTime = (userObj, log) => {
   const logTime = log.time.getTime();
   
@@ -205,6 +207,13 @@ const calcWorkTime = (start, end) => {
   const timeStr = DateUtils.getUTCTimePartStr(resultDate);
   
   return timeStr;
+}
+
+const logByName = userObj => {
+   if (userObj.name === 'Ємельянова Світлана Володимирівна')
+   {
+     console.log(userObj);
+   }
 }
 
 const setUserEnterResultStats = (userResult, userLog) => {
@@ -249,6 +258,7 @@ const aggregatedDivisionLogStats = (resultArr, aggregatedUser, timeRange) => {
   
   for (const key in aggregatedUser) {
     const userLog = aggregatedUser[key];
+    logByName(userLog);
     
     let userResult = getUserLogObj();
     userResult.name = userLog.name;
@@ -257,10 +267,14 @@ const aggregatedDivisionLogStats = (resultArr, aggregatedUser, timeRange) => {
     if (userLog.firstIn !== null) {
       setUserEnterResultStats(userResult, userLog);
     }
+
+    logByName(userLog);
     
     if (userLog.lastOut !== null)  {
       setUserExitResultStats(userResult, userLog, islookAtCurrDate);
     }
+
+    logByName(userLog);
 
     if ((userLog.firstIn !== null) && (userLog.lastOut !== null))  {
       userResult.worked = calcWorkTime(userLog.firstIn, userLog.lastOut);
@@ -279,7 +293,6 @@ const aggregatedDivisionLogStats = (resultArr, aggregatedUser, timeRange) => {
   }
 }
 
-// TODO: fix error on  96 11.02.2021
 exports.processGetDivisionTimekeepStat = async (divisionID, date) => {
   let result = [];
   const timeRange = DateUtils.getTimeRangeForDate(date);
@@ -287,7 +300,7 @@ exports.processGetDivisionTimekeepStat = async (divisionID, date) => {
   let pendingReq = [];
   pendingReq.push(dbCon.castQuery(sqlQueryList.getAbsentType));
   pendingReq.push(dbCon.castQuery(
-    sqlQueryList.getEmployeesDivisionInfo, [timeRange.low.str, timeRange.high.str, divisionID]));
+    sqlQueryList.getEmployeesDivisionInfoWithAbsent, [timeRange.low.str, timeRange.high.str, divisionID]));
 
   const [absentType, users] = await dbCon.gather(pendingReq);
   if (!users.length) return null;
@@ -311,7 +324,25 @@ exports.processGetDivisionTimekeepStat = async (divisionID, date) => {
 
   aggregatedDivisionLogStats(result, aggregatedUser, timeRange);
   result.sort((a, b) => a.name.localeCompare(b.name));
-  console.log(result);
+  //console.log(result);
 
   return result;
+}
+
+exports.processGetUserTimekeepLog = async (ldapName, date) => {
+  const timeRange = DateUtils.getTimeRangeForDate(date);
+
+  let pendingReg = [];
+  const pendingRegParams = [timeRange.low.str, timeRange.high.str, ldapName];
+  pendingReg.push(dbCon.castQuery(sqlQueryList.getUserInfoWithAbsent, pendingRegParams));
+  pendingReg.push(dbCon.castQuery(sqlQueryList.getUserTimekeepLog, pendingRegParams));
+  pendingReg.push(dbCon.castQuery(sqlQueryList.getAbsentType));
+
+  const [userInfo, timekeepLog, absentType] = await dbCon.gather(pendingReg);
+  if (!userInfo.length || !timekeepLog.length) return null;
+  
+  console.log(userInfo);
+  console.log(timekeepLog);
+
+  let contrIdToName = {};
 }

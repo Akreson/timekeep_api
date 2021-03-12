@@ -4,7 +4,8 @@ const DateUtils = require("../utils/date");
 
 const {
     processGetUserDepartAccessList,
-    processGetDivisionStat
+    processGetDivisionTimekeepStat,
+    processGetUserTimekeepLog
 } = require("../services/timekeep.js")
 
 const succsesResponse = responseResult => {
@@ -104,7 +105,7 @@ exports.getUserTimekeepLog = asynchandler(async (req, res, next) => {
     date = DateUtils.getNowDate();
   }
 
-  const response = await processGetUserTimekeep(Number(divisionID), date);
+  const response = await processGetUserTimekeepLog(ldapName, date);
   if (!response) {
     return next(new ErrorResponse("Данних не знайденно", 400, "ValidationError"));
   }
