@@ -84,3 +84,31 @@ exports.getDvisionTimekeepInfo = asynchandler(async (req, res, next) => {
   const result = succsesResponse(response);
   res.json(result);
 });
+
+exports.getUserTimekeepLog = asynchandler(async (req, res, next) => {
+  const ldapName = req.params.ldapName;
+  const passDate = req.params.date;
+
+  if (!isValidGetParam(ldapName)) {
+    return next(new ErrorResponse("Невказаний пошуковий LDAP логін", 400, "ValidationError"));
+  }
+
+  let date = null;
+  if (passDate !== undefined) {
+    date = parseDivisionStatsDate(passDate);
+
+    if (date === null) {
+      return next(new ErrorResponse("Невірно задана дата", 400, "ValidationError"));
+    }
+  } else {
+    date = DateUtils.getNowDate();
+  }
+
+  const response = await processGetUserTimekeep(Number(divisionID), date);
+  if (!response) {
+    return next(new ErrorResponse("Данних не знайденно", 400, "ValidationError"));
+  }
+
+  const result = succsesResponse(response);
+  res.json(result);
+})
