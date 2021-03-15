@@ -52,20 +52,21 @@ exports.sqlQueryList = {
     
     getUserTimekeepLog: `
       SELECT
-        ControllersLog.direction,
-        ControllersLog.id_controller,
-        TIME(ControllersLog.dt_event) as time
+        direction,
+        id_controller,
+        dt_event as time
       FROM 
         ControllersLog
       WHERE 
-        DATE(ControllersLog.dt_event) between DATE(?) and DATE(?)
+        DATE(dt_event) between DATE(?) and DATE(?)
       AND
-        ControllersLog.id_user = ?;`,
+        id_user = ?;`,
       
     getControllersMainInfo: `
       SELECT
         id_controller,
         use_timekeeping,
+        direction,
         name
       FROM
         Controllers

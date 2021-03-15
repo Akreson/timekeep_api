@@ -110,45 +110,38 @@ const getUserLogObj = () => {
   return result;
 }
 
+const initUsersTimekeepLogAggr = (user, checkDate, absentTypeArr, completeArray, aggregatedUserResult) => {
+  let resultUserObj = getUserLogObj();
 
-const prepareDivisionTimekeepAggr = (completeArray, users, checkDate, absentTypeArr) => {
-  let aggregatedUserResult = {};
-  
-  users.forEach(user => {
-    let userObj = getUserLogObj();
+  // опоздание, прогул, ранний уход
+  const isNotTimekeepAbsent = (user.absent_id !== null) &&
+    (user.absent_id !== 1) && (user.absent_id !== 2) && (user.absent_id !== 7);
 
-    // опоздание, прогул, ранний уход
-    const isNotTimekeepAbsent = (user.absent_id !== null) &&
-      (user.absent_id !== 1) && (user.absent_id !== 2) && (user.absent_id !== 7);
+  if (DateUtils.areDatePartEq(user.dt_creation, checkDate)) {
+    resultUserObj.note = "заведен в табельный учет";
+  }
 
-    if (DateUtils.areDatePartEq(user.dt_creation, checkDate)) {
-      userObj.note = "заведен в табельный учет";
-    }
-
-    if (DateUtils.areDatePartGt(user.dt_creation, checkDate)) {
-      userObj.name = user.name;
-      userObj.ldapName = user.id_user;
-      completeArray.push(userObj);
-    } else {
-      const startTime = DateUtils.setTimeFromStr(checkDate, user.begin_workday);
-      const endTime = DateUtils.setTimeFromStr(checkDate, user.end_workday);
-      const setAbsent = isNotTimekeepAbsent ? absentTypeArr[user.absent_id - 1].name : null;
-      
-      aggregatedUserResult[user.id_user] = {
-        name: user.name,
-        absentType: setAbsent,
-        timeType: user.time_worked_type,
-        // date obj
-        start: startTime,
-        end: endTime,
-        // millisecond
-        firstIn: null,
-        lastOut: null
-      };
-    }
-  });
-
-  return aggregatedUserResult;
+  if (DateUtils.areDatePartGt(user.dt_creation, checkDate)) {
+    resultUserObj.name = user.name;
+    resultUserObj.ldapName = user.id_user;
+    completeArray.push(resultUserObj);
+  } else {
+    const startTime = DateUtils.setTimeFromStr(checkDate, user.begin_workday);
+    const endTime = DateUtils.setTimeFromStr(checkDate, user.end_workday);
+    const setAbsent = isNotTimekeepAbsent ? absentTypeArr[user.absent_id - 1].name : null;
+    
+    aggregatedUserResult[user.id_user] = {
+      name: user.name,
+      absentType: setAbsent,
+      timeType: user.time_worked_type,
+      // date obj
+      start: startTime,
+      end: endTime,
+      // millisecond
+      firstIn: null,
+      lastOut: null
+    };
+  }
 }
 
 const setUserStricTimekeepLogTime = (userObj, log) => {
@@ -239,7 +232,7 @@ const setUserExitResultStats = (userResult, userLog, islookAtCurrDate) => {
   }
 }
 
-const aggregatedDivisionLogStats = (resultArr, aggregatedUser, timeRange) => {
+const aggregateUsersLogStats = (resultArr, aggregatedUser, timeRange) => {
   const currentDate = DateUtils.getNowDate();
   const currentTime = (new Date()).getTime();
   const islookAtCurrDate = timeRange.low.date.getTime() === currentDate.getTime();
@@ -291,7 +284,11 @@ exports.processGetDivisionTimekeepStat = async (divisionID, date) => {
   const timekeepLogPendingReq = dbCon.castQuery(
     sqlQueryList.getDivisionTimekeepLog, [divisionID, timeRange.low.str, timeRange.high.str]);
   
-  let aggregatedUser = prepareDivisionTimekeepAggr(result, users, timeRange.low.date, absentType);
+  let aggregatedUser = {};
+  users.forEach(user => {
+    initUsersTimekeepLogAggr(user, timeRange.low.date, absentType, result, aggregatedUser);
+  })
+
   let timekeepLog = await dbCon.getResponse(timekeepLogPendingReq);
   if (!timekeepLog.length) return null;
   
@@ -305,9 +302,35 @@ exports.processGetDivisionTimekeepStat = async (divisionID, date) => {
     }
   });
 
-  aggregatedDivisionLogStats(result, aggregatedUser, timeRange);
+  aggregateUsersLogStats(result, aggregatedUser, timeRange);
   result.sort((a, b) => a.name.localeCompare(b.name));
-  //console.log(result);
+
+  return result;
+}
+
+const buildControllerLogList = (controllerInfo, contrIdToName, timekeepLog) => {
+  let result = [];
+
+  //timekeepLog.sort((a, b) => a.time.getTime() - b.time.getTime());
+  controllerInfo.forEach(controller => {
+    contrIdToName[controller.id_controller] = {
+      name: controller.name,
+      timekeep: controller.use_timekeeping,
+      dir: controller.direction
+    };
+  });
+
+  timekeepLog.forEach(log => {
+    const controller = contrIdToName[log.id_controller];
+    const contrLogObj = {
+      time: DateUtils.getTimePartStr(log.time),
+      dir: controller.dir,
+      name: controller.name,
+      timekeep: controller.timekeep,
+    };
+
+    result.push(contrLogObj);
+  });
 
   return result;
 }
@@ -322,14 +345,47 @@ exports.processGetUserTimekeepLog = async (ldapName, date) => {
   pendingReg.push(dbCon.castQuery(sqlQueryList.getAbsentType));
 
   const [userInfo, timekeepLog, absentType] = await dbCon.gather(pendingReg);
-  if (!userInfo.length || !timekeepLog.length) return null;
-
-  const gatherDeparts = await gatherDepartHierarchy([userInfo[0].department_id]);
-  const departResult = buildResultDepartsHierarchy(gatherDeparts);
+  if (!userInfo.length) return null;
   
-  console.log(JSON.stringify(departResult));
-  console.log(userInfo);
-  console.log(timekeepLog);
+  const user = userInfo[0];
+  user.id_user = ldapName;
 
-  let contrIdToName = {};
+  const gatherDeparts = await gatherDepartHierarchy([user.department_id]);
+  const departResult = buildResultDepartsHierarchy(gatherDeparts);
+
+  let aggregatedUser = {};
+  let userTimekeepResult = [];
+  initUsersTimekeepLogAggr(user, timeRange.low.date, absentType, userTimekeepResult, aggregatedUser);
+  
+  let contrKeyIdObj = {};
+  let userLogObj = aggregatedUser[ldapName];
+  timekeepLog.forEach(controllerLog => {
+    if (contrKeyIdObj[controllerLog.id_controller] === undefined) {
+      contrKeyIdObj[controllerLog.id_controller] = 0;
+    }
+
+    if (userLogObj.timeType === 1) {
+      setUserStricTimekeepLogTime(userLogObj, controllerLog);
+    } else if (userLogObj.timeType === 2) {
+      setUserNotStricTimekeepLogTime(userLogObj, controllerLog);
+    }
+  });
+
+  const controllersID = Object.keys(contrKeyIdObj);
+  const controllerInfoPendingReq = dbCon.castQuery(sqlQueryList.getControllersMainInfo, [controllersID]);
+
+  aggregateUsersLogStats(userTimekeepResult, aggregatedUser, timeRange);
+
+  const controllerInfo = await dbCon.getResponse(controllerInfoPendingReq);
+  const contrLogList = buildControllerLogList(controllerInfo, contrKeyIdObj, timekeepLog);
+
+  const result = {
+    user: userTimekeepResult[0],
+    depart: departResult,
+    controller: contrLogList
+  };
+
+  console.log(result);
+
+  return result;
 }
