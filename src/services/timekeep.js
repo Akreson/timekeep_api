@@ -46,10 +46,7 @@ const buildResultDepartsHierarchy = gatheredDepartInfo => {
 
 const gatherDepartHierarchy = async initUserDepart => {
   let resultGatherDeparts = {};
-  
-  let departIDToReq = initUserDepart.map(item => {
-    return item.department_id;
-  });
+  let departIDToReq = initUserDepart
   
   // проверяем parent_id которые отсутствуют и запрашиваем их
   while (true) {
@@ -88,11 +85,12 @@ exports.processGetUserDepartAccessList = async ldapName => {
 
   if (!userIDResult.length) return null;
   const userID = userIDResult[0].id;
-
+  
   const userAllowDepart = await dbCon.query(sqlQueryList.getUserAllowedDeparts, [userID]);
   if (!userAllowDepart.length) return null;
-
-  const gatherDeparts = await gatherDepartHierarchy(userAllowDepart);
+  
+  const allowDepartsIDs = userAllowDepart.map(item => item.department_id);
+  const gatherDeparts = await gatherDepartHierarchy(allowDepartsIDs);
   const result = buildResultDepartsHierarchy(gatherDeparts);
 
   return result;
@@ -111,6 +109,7 @@ const getUserLogObj = () => {
 
   return result;
 }
+
 
 const prepareDivisionTimekeepAggr = (completeArray, users, checkDate, absentTypeArr) => {
   let aggregatedUserResult = {};
@@ -324,7 +323,11 @@ exports.processGetUserTimekeepLog = async (ldapName, date) => {
 
   const [userInfo, timekeepLog, absentType] = await dbCon.gather(pendingReg);
   if (!userInfo.length || !timekeepLog.length) return null;
+
+  const gatherDeparts = await gatherDepartHierarchy([userInfo[0].department_id]);
+  const departResult = buildResultDepartsHierarchy(gatherDeparts);
   
+  console.log(JSON.stringify(departResult));
   console.log(userInfo);
   console.log(timekeepLog);
 

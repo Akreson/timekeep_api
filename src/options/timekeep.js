@@ -78,6 +78,7 @@ exports.sqlQueryList = {
         CONVERT(begin_workday, TIME) as begin_workday,
         CONVERT(end_workday, TIME) as end_workday,
         time_worked_type,
+        department_id,
         dt_creation,
         AbsentLog.absent_id
       FROM 
