@@ -357,35 +357,38 @@ exports.processGetUserTimekeepLog = async (ldapName, date) => {
   let userTimekeepResult = [];
   initUsersTimekeepLogAggr(user, timeRange.low.date, absentType, userTimekeepResult, aggregatedUser);
   
-  let contrKeyIdObj = {};
-  let userLogObj = aggregatedUser[ldapName];
-  timekeepLog.forEach(controllerLog => {
-    if (contrKeyIdObj[controllerLog.id_controller] === undefined) {
-      contrKeyIdObj[controllerLog.id_controller] = 0;
-    }
-
-    if (userLogObj.timeType === 1) {
-      setUserStricTimekeepLogTime(userLogObj, controllerLog);
-    } else if (userLogObj.timeType === 2) {
-      setUserNotStricTimekeepLogTime(userLogObj, controllerLog);
-    }
-  });
-
-  const controllersID = Object.keys(contrKeyIdObj);
-  const controllerInfoPendingReq = dbCon.castQuery(sqlQueryList.getControllersMainInfo, [controllersID]);
-
-  aggregateUsersLogStats(userTimekeepResult, aggregatedUser, timeRange);
-
-  const controllerInfo = await dbCon.getResponse(controllerInfoPendingReq);
-  const contrLogList = buildControllerLogList(controllerInfo, contrKeyIdObj, timekeepLog);
+  let contrLogListResult = [];
+  if (timekeepLog.length) {
+    let contrKeyIdObj = {};
+    let userLogObj = aggregatedUser[ldapName];
+    timekeepLog.forEach(controllerLog => {
+      if (contrKeyIdObj[controllerLog.id_controller] === undefined) {
+        contrKeyIdObj[controllerLog.id_controller] = 0;
+      }
+      
+      if (userLogObj.timeType === 1) {
+        setUserStricTimekeepLogTime(userLogObj, controllerLog);
+      } else if (userLogObj.timeType === 2) {
+        setUserNotStricTimekeepLogTime(userLogObj, controllerLog);
+      }
+    });
+    
+    const controllersID = Object.keys(contrKeyIdObj);
+    const controllerInfoPendingReq = dbCon.castQuery(sqlQueryList.getControllersMainInfo, [controllersID]);
+    
+    aggregateUsersLogStats(userTimekeepResult, aggregatedUser, timeRange);
+    
+    const controllerInfo = await dbCon.getResponse(controllerInfoPendingReq);
+    contrLogListResult = buildControllerLogList(controllerInfo, contrKeyIdObj, timekeepLog);
+  } else {
+    aggregateUsersLogStats(userTimekeepResult, aggregatedUser, timeRange);
+  }
 
   const result = {
     user: userTimekeepResult[0],
     depart: departResult,
-    controller: contrLogList
+    controller: contrLogListResult
   };
-
-  console.log(result);
 
   return result;
 }
