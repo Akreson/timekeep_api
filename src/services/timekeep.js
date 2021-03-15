@@ -172,17 +172,13 @@ const setUserStricTimekeepLogTime = (userObj, log) => {
   }
 }
 
-// TODO: count first in or out as first in
-// and last in or out as last out
 const setUserNotStricTimekeepLogTime = (userObj, log) => {
   const logTime = log.time.getTime();
   
-  if (log.direction === 1) {
-    if (userObj.firstIn === null) {
-      userObj.firstIn = logTime;
-    } else {
-      if (logTime > userObj.firstIn)  userObj.lastOut = logTime
-    }
+  if (userObj.firstIn === null) {
+    userObj.firstIn = logTime;
+  } else if (logTime > userObj.firstIn) {
+    userObj.lastOut = logTime
   }
 }
 
