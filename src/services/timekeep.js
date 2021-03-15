@@ -209,13 +209,6 @@ const calcWorkTime = (start, end) => {
   return timeStr;
 }
 
-const logByName = userObj => {
-   if (userObj.name === 'Ємельянова Світлана Володимирівна')
-   {
-     console.log(userObj);
-   }
-}
-
 const setUserEnterResultStats = (userResult, userLog) => {
   const startTime = userLog.start.getTime();
   const enterDate = new Date(userLog.firstIn);
@@ -258,7 +251,6 @@ const aggregatedDivisionLogStats = (resultArr, aggregatedUser, timeRange) => {
   
   for (const key in aggregatedUser) {
     const userLog = aggregatedUser[key];
-    logByName(userLog);
     
     let userResult = getUserLogObj();
     userResult.name = userLog.name;
@@ -267,14 +259,10 @@ const aggregatedDivisionLogStats = (resultArr, aggregatedUser, timeRange) => {
     if (userLog.firstIn !== null) {
       setUserEnterResultStats(userResult, userLog);
     }
-
-    logByName(userLog);
     
     if (userLog.lastOut !== null)  {
       setUserExitResultStats(userResult, userLog, islookAtCurrDate);
     }
-
-    logByName(userLog);
 
     if ((userLog.firstIn !== null) && (userLog.lastOut !== null))  {
       userResult.worked = calcWorkTime(userLog.firstIn, userLog.lastOut);
