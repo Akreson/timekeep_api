@@ -8,7 +8,7 @@ class DateUtils {
   
   constructor() {}
 
-  // Автоматически учитовает часовой пояс
+  // Автоматически учитывает часовой пояс
   static dateToISOstr = date => {
     if (!(date instanceof Date)) return null;
 
@@ -152,6 +152,12 @@ class DateUtils {
     const dateObj2 = DateUtils.getDatePartObj(date2);
 
     return dateObj1.getTime() === dateObj2.getTime();
+  }
+
+  static isDayOff(date) {
+    const dayNum = date.getDay();
+    const result = ((dayNum === 6) || (dayNum === 0)) ? true : false; 
+    return result;
   }
 }
 

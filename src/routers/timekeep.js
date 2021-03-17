@@ -8,11 +8,11 @@ const {
 
 const timekeepRoutes = express.Router();
 
-timekeepRoutes.get("/read/user/departments/:ldapName", getUserDepartmentsAccessList);
+timekeepRoutes.get("/read/user/departments_access/:ldapName", getUserDepartmentsAccessList);
 
 // TODO: choose id or name
 timekeepRoutes.get("/read/divison/stats/:divisionID/:date", getDvisionTimekeepInfo);
 
-timekeepRoutes.get("/read/user/log/:ldapName/:date", getUserTimekeepLog)
+timekeepRoutes.get("/read/user/log/:ldapName/:date", getUserTimekeepLog);
 
 module.exports = timekeepRoutes;

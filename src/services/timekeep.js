@@ -129,6 +129,7 @@ const initUsersTimekeepLogAggr = (user, checkDate, absentTypeArr, completeArray,
     const startTime = DateUtils.setTimeFromStr(checkDate, user.begin_workday);
     const endTime = DateUtils.setTimeFromStr(checkDate, user.end_workday);
     const setAbsent = isNotTimekeepAbsent ? absentTypeArr[user.absent_id - 1].name : null;
+    setAbsent = DateUtils.isDayOff(checkDate) ? "выходной" : setAbsent;
     
     aggregatedUserResult[user.id_user] = {
       name: user.name,
