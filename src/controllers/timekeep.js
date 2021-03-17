@@ -5,7 +5,8 @@ const DateUtils = require("../utils/date");
 const {
     processGetUserDepartAccessList,
     processGetDivisionTimekeepStat,
-    processGetUserTimekeepLog
+    processGetUserTimekeepLog,
+    processGetDivisionsReports
 } = require("../services/timekeep.js")
 
 const succsesResponse = responseResult => {
@@ -40,7 +41,7 @@ exports.getUserDepartmentsAccessList = asynchandler(async (req, res, next) => {
 
   const result = succsesResponse(response);
   res.json(result);
-})
+});
 
 const parseDivisionStatsDate = checkDate => {
   const [day, month, year] = checkDate.split(".").map(item => Number(item));
@@ -112,4 +113,8 @@ exports.getUserTimekeepLog = asynchandler(async (req, res, next) => {
 
   const result = succsesResponse(response);
   res.json(result);
-})
+});
+
+exports.getDivisionsReports = asynchandler(async (req, res, next) => {
+
+});
