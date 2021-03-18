@@ -30,17 +30,17 @@ const isValidStrParam = param => {
 const parseParamPassDate = checkDate => {
   const [day, month, year] = checkDate.split(".").map(item => Number(item));
 
-  if ((day === undefined) || (day === NaN) || ((day < 1) || (day > 31))) return null;
-  if ((month === undefined) || (month === NaN) || ((month < 1) || (month > 12))) return null;
-  if ((year === undefined) || (year === NaN) || (year < 1970)) return null;
+  if ((day === undefined) || isNaN(day) || ((day < 1) || (day > 31))) return null;
+  if ((month === undefined) || isNaN(month) || ((month < 1) || (month > 12))) return null;
+  if ((year === undefined) || isNaN(year) || (year < 1970)) return null;
 
   let date = new Date(year, month - 1, day);
   return date
 }
 
-const convertPassDate = date => {
+const convertPassDate = passDate => {
   let result = null;
-  if (date !== undefined) {
+  if (passDate !== undefined) {
     result = parseParamPassDate(passDate);
   } else {
     result = DateUtils.getNowDate();
@@ -125,7 +125,11 @@ exports.getUserTimekeepLog = asynchandler(async (req, res, next) => {
 exports.getDivisionsReports = asynchandler(async (req, res, next) => {
   const reqData = req.body["data"];
 
-  if (!isValidStrParam(reqData.type)) {
+  if (isValidStrParam(reqData.type)) {
+    if ((reqData.type !== "web") && (reqData.type !== "general") && (reqData.type !== "full")) {
+      return next(new ErrorResponse("Не поддерживаемый формат отчета", 400, "ValidationError"));  
+    }
+  } else {
     return next(new ErrorResponse("Неверно указан тип отчета", 400, "ValidationError"));
   }
 
@@ -139,8 +143,8 @@ exports.getDivisionsReports = asynchandler(async (req, res, next) => {
     return next(new ErrorResponse("Неверно заданая конечная дата", 400, "ValidationError"));
   }
 
-  if ((reqDate.departs !== undefined) && reqDate.departs.length) {
-    const InvalidDepartId = reqDate.departs.findIndex(id => {
+  if ((reqData.departs !== undefined) && reqData.departs.length) {
+    const InvalidDepartId = reqData.departs.findIndex(id => {
       if (typeof id === "number") return false;
       return true;
     });
@@ -152,8 +156,7 @@ exports.getDivisionsReports = asynchandler(async (req, res, next) => {
     return next(new ErrorResponse("Неуказаны отделы для отчета", 400, "ValidationError"));
   }
 
-  const response = processGetDivisionsReports(departs, type, lowDate, highDate);
-  
+  const response = await processGetDivisionsReports(reqData.departs, reqData.type, lowDate, highDate);
   if (!response) {
     return next(new ErrorResponse("Данных не найдено", 400, "ValidationError"));
   }

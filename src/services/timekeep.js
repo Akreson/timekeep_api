@@ -394,4 +394,6 @@ exports.processGetUserTimekeepLog = async (ldapName, date) => {
   return result;
 }
 
-exports.processGetDivisionsReports = () => {};
+exports.processGetDivisionsReports = () => {
+  return "Ok"
+}
