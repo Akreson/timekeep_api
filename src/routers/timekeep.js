@@ -16,6 +16,17 @@ timekeepRoutes.get("/read/divison/stats/:divisionID/:date", getDvisionTimekeepIn
 
 timekeepRoutes.get("/read/user/log/:ldapName/:date", getUserTimekeepLog);
 
+//web general full
+/*
+{
+  date: {
+    low: date,
+    high: date,
+    type: str,
+    departs: [ids...],
+  }
+}
+*/
 timekeepRoutes.post("/reports", getDivisionsReports);
 
 module.exports = timekeepRoutes;

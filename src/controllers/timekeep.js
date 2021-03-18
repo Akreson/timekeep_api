@@ -19,7 +19,7 @@ const succsesResponse = responseResult => {
   return result;
 }
 
-const isValidGetParam = param => {
+const isValidStrParam = param => {
   if ((param === undefined) || (typeof param !== "string") || (param.length === 0)) {
     return false;
   }
@@ -30,13 +30,13 @@ const isValidGetParam = param => {
 
 exports.getUserDepartmentsAccessList = asynchandler(async (req, res, next) => {
   const ldapName = req.params.ldapName;
-  if (!isValidGetParam(ldapName)) {
-    return next(new ErrorResponse("Невказаний пошуковий LDAP логін", 400, "ValidationError"));
+  if (!isValidStrParam(ldapName)) {
+    return next(new ErrorResponse("Неуказан поисковый LDAP логин", 400, "ValidationError"));
   }
 
   const response = await processGetUserDepartAccessList(ldapName);
   if (!response) {
-    return next(new ErrorResponse("Помилка", 400, "ValidationError"));
+    return next(new ErrorResponse("Ошибка", 400, "ValidationError"));
   }
 
   const result = succsesResponse(response);
@@ -58,13 +58,13 @@ exports.getDvisionTimekeepInfo = asynchandler(async (req, res, next) => {
   const divisionID = req.params.divisionID;
   const passDate = req.params.date;
   
-  if (!isValidGetParam(divisionID)) {
-    return next(new ErrorResponse("Невказаний підрозділ для запиту", 400, "ValidationError"));
+  if (!isValidStrParam(divisionID)) {
+    return next(new ErrorResponse("Неуказано подразделение для запроса ", 400, "ValidationError"));
   }
   
   // TODO: Only for division id
   if (divisionID.search(/^\d+$/) === -1) {
-    return next(new ErrorResponse("Невірно заданий ідентифікатор підрозділу", 400, "ValidationError"));
+    return next(new ErrorResponse("Неправильно задан идентификатор подразделения", 400, "ValidationError"));
   }
   
   let date = null;
@@ -72,7 +72,7 @@ exports.getDvisionTimekeepInfo = asynchandler(async (req, res, next) => {
     date = parseDivisionStatsDate(passDate);
 
     if (date === null) {
-      return next(new ErrorResponse("Невірно задана дата", 400, "ValidationError"));
+      return next(new ErrorResponse("Неверно заданая дата", 400, "ValidationError"));
     }
   } else {
     date = DateUtils.getNowDate();
@@ -80,7 +80,7 @@ exports.getDvisionTimekeepInfo = asynchandler(async (req, res, next) => {
 
   const response = await processGetDivisionTimekeepStat(Number(divisionID), date);
   if (!response) {
-    return next(new ErrorResponse("Данних не знайденно", 400, "ValidationError"));
+    return next(new ErrorResponse("Данных не найдено", 400, "ValidationError"));
   }
 
   const result = succsesResponse(response);
@@ -91,8 +91,8 @@ exports.getUserTimekeepLog = asynchandler(async (req, res, next) => {
   const ldapName = req.params.ldapName;
   const passDate = req.params.date;
 
-  if (!isValidGetParam(ldapName)) {
-    return next(new ErrorResponse("Невказаний пошуковий LDAP логін", 400, "ValidationError"));
+  if (!isValidStrParam(ldapName)) {
+    return next(new ErrorResponse("Не указан поисковый LDAP логин", 400, "ValidationError"));
   }
 
   let date = null;
@@ -100,7 +100,7 @@ exports.getUserTimekeepLog = asynchandler(async (req, res, next) => {
     date = parseDivisionStatsDate(passDate);
 
     if (date === null) {
-      return next(new ErrorResponse("Невірно задана дата", 400, "ValidationError"));
+      return next(new ErrorResponse("Неверно заданая дата", 400, "ValidationError"));
     }
   } else {
     date = DateUtils.getNowDate();
@@ -108,7 +108,7 @@ exports.getUserTimekeepLog = asynchandler(async (req, res, next) => {
 
   const response = await processGetUserTimekeepLog(ldapName, date);
   if (!response) {
-    return next(new ErrorResponse("Данних не знайденно", 400, "ValidationError"));
+    return next(new ErrorResponse("Данных не найдено", 400, "ValidationError"));
   }
 
   const result = succsesResponse(response);
@@ -116,5 +116,10 @@ exports.getUserTimekeepLog = asynchandler(async (req, res, next) => {
 });
 
 exports.getDivisionsReports = asynchandler(async (req, res, next) => {
+  const reqData = req.body["data"];
+
+  if (!isValidStrParam(reqData.type)) {
+    return next(new ErrorResponse("Неверно указан тип отчета", 400, "ValidationError"));
+  }
 
 });
