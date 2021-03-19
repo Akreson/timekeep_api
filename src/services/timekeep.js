@@ -6,6 +6,11 @@ const DateUtils = require("../utils/date");
 const { dbConnectionParams } = require("../configs/info.js");
 const { sqlQueryList } = require("../options/timekeep");
 
+const {
+  setImmediatePromise,
+  setTimeoutPromise,
+} = require("../utils/shared");
+
 const timeToAbsentMillices = 2 * DateUtils.hoursToMillisec;
 const dbCon = new DbConnection(dbConnectionParams);
 
@@ -81,19 +86,6 @@ const gatherDepartHierarchy = async initUserDepart => {
 }
 
 exports.processGetUserDepartAccessList = async ldapName => {
-
-  console.time("timer");
-
-  let p = [];
-  p.push(dbCon.castQuery(sqlQueryList.sleep3Sec));
-  p.push(dbCon.castQuery(sqlQueryList.sleep3Sec));
-  p.push(dbCon.castQuery(sqlQueryList.sleep3Sec));
-  console.log(p);
-  
-  const a = await dbCon.gather(p);
-  console.timeEnd("timer");
-  console.log(p);
-
   const userIDResult = await dbCon.query(sqlQueryList.getUserIDFromUserLDAP, [ldapName]);
 
   if (!userIDResult.length) return null;
@@ -288,15 +280,15 @@ exports.processGetDivisionTimekeepStat = async (divisionID, date) => {
   const timeRange = DateUtils.getTimeRangeForDate(date);
   
   let pendingReq = [];
-  pendingReq.push(dbCon.castQuery(sqlQueryList.getAbsentType));
-  pendingReq.push(dbCon.castQuery(
+  pendingReq.push(dbCon.query(sqlQueryList.getAbsentType));
+  pendingReq.push(dbCon.query(
     sqlQueryList.getEmployeesDivisionInfoWithAbsent, [timeRange.low.str, timeRange.high.str, divisionID]));
 
-  const [absentType, users] = await dbCon.gather(pendingReq);
+  const [absentType, users] = await Promise.all(pendingReq);
   console.log(absentType, users);
   if (!users.length) return null;
   
-  const timekeepLogPendingReq = dbCon.castQuery(
+  const timekeepLogPendingReq = dbCon.query(
     sqlQueryList.getDivisionTimekeepLog, [divisionID, timeRange.low.str, timeRange.high.str]);
   
   let aggregatedUser = {};
@@ -304,7 +296,7 @@ exports.processGetDivisionTimekeepStat = async (divisionID, date) => {
     initUsersTimekeepLogAggr(user, timeRange.low.date, absentType, result, aggregatedUser);
   })
 
-  let timekeepLog = await dbCon.getResponse(timekeepLogPendingReq);
+  let timekeepLog = await timekeepLogPendingReq;
   if (!timekeepLog.length) return null;
   
   timekeepLog.forEach(log => {
@@ -355,11 +347,11 @@ exports.processGetUserTimekeepLog = async (ldapName, date) => {
 
   let pendingReg = [];
   const pendingRegParams = [timeRange.low.str, timeRange.high.str, ldapName];
-  pendingReg.push(dbCon.castQuery(sqlQueryList.getUserInfoWithAbsent, pendingRegParams));
-  pendingReg.push(dbCon.castQuery(sqlQueryList.getUserTimekeepLog, pendingRegParams));
-  pendingReg.push(dbCon.castQuery(sqlQueryList.getAbsentType));
+  pendingReg.push(dbCon.query(sqlQueryList.getUserInfoWithAbsent, pendingRegParams));
+  pendingReg.push(dbCon.query(sqlQueryList.getUserTimekeepLog, pendingRegParams));
+  pendingReg.push(dbCon.query(sqlQueryList.getAbsentType));
 
-  const [userInfo, timekeepLog, absentType] = await dbCon.gather(pendingReg);
+  const [userInfo, timekeepLog, absentType] = await Promise.all(pendingReg);
   if (!userInfo.length) return null;
   
   const user = userInfo[0];
@@ -389,11 +381,11 @@ exports.processGetUserTimekeepLog = async (ldapName, date) => {
     });
     
     const controllersID = Object.keys(contrKeyIdObj);
-    const controllerInfoPendingReq = dbCon.castQuery(sqlQueryList.getControllersMainInfo, [controllersID]);
+    const controllerInfoPendingReq = dbCon.query(sqlQueryList.getControllersMainInfo, [controllersID]);
     
     aggregateUsersLogStats(userTimekeepResult, aggregatedUser, timeRange);
     
-    const controllerInfo = await dbCon.getResponse(controllerInfoPendingReq);
+    const controllerInfo = await controllerInfoPendingReq;
     contrLogListResult = buildControllerLogList(controllerInfo, contrKeyIdObj, timekeepLog);
   } else {
     aggregateUsersLogStats(userTimekeepResult, aggregatedUser, timeRange);
@@ -411,3 +403,20 @@ exports.processGetUserTimekeepLog = async (ldapName, date) => {
 exports.processGetDivisionsReports = () => {
   return "Ok"
 }
+
+/*
+  console.time('t');
+
+  let p = [];
+  p.push(dbCon.query(sqlQueryList.sleep1Sec));
+  p.push(dbCon.query(sqlQueryList.sleep1Sec));
+  p.push(dbCon.query(sqlQueryList.sleep1Sec));
+  console.log(p);
+
+  const r = await Promise.all(p);
+  console.log(r[0], r[1], r[2]);
+
+  console.timeEnd('t');
+
+  return "ok";
+*/

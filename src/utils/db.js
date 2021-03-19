@@ -1,88 +1,125 @@
 const mysql2 = require("mysql2");
 const DateUtils = require("../utils/date");
 
-// function setImmediatePromise() {
-//   return new Promise((resolve) => {
-//     setImmediate(() => resolve());
-//   });
-// }
+const {
+  setImmediatePromise
+} = require("../utils/shared");
 
-const setImmediatePromise = async () => {
-  setImmediate(() => Promise.resolve());
-}
+let GLOBAL_COUNTER = 0;
 
-class ListItem {
-  constructor(item) {
-    this.data = item;
+class ListElement {
+  constructor(elem = null) {
+    this.index = GLOBAL_COUNTER++; // NOTE: for debug
+
+    this.data = elem;
     this.next = null;
     this.prev = null;
   }
 }
 
 class List {
+  constructor(elem) {
+    this.sentinel = new ListElement();
+    this.sentinel.next = this.sentinel;
+    this.sentinel.prev = this.sentinel;
 
-}
+    this.sentinel.index = null;
+  }
 
+  printIDs() {
+    for (let elem = this.sentinel.next; elem !== this.sentinel; elem = elem.next) {
+      process.stdout.write(`${elem.index} `);
+    }
+    process.stdout.write("\n");
+  }
 
-// TODO: Add pool
-class DbConnection {
-    constructor(options, poolSize = 10) {
-      // this.freeConnList = null;
-      // this.connList = null;
-      // this.pendingReq = null;
+  insert(elem) {
+    elem.next = this.sentinel;
+    elem.prev = this.sentinel.prev;
+    elem.next.prev = elem;
+    elem.prev.next = elem;
+  }
 
-      // for (let i = 0; i < poolSize; ++i) {
-      //   let conn = mysql2.createConnection(options).promise();
+  getFirst() {
+    if (this.sentinel.next === this.sentinel) return null;
+    
+    let elem = this.sentinel.next;
+    this.sentinel.next = elem.next;
+    elem.next.prev = this.sentinel;
 
-      //   if (this.freeConnList === null) {
-      //     this.freeConnList = new ConnListItem(conn);
-      //   } else {
-      //     this.freeConnList.next = new ConnListItem(conn);
-      //   }
-      // }
-      
-      this.dbCon = mysql2.createConnection(options).promise();
+    elem.next = null;
+    elem.prev = null;
+
+    return elem;
+  }
+
+  getbyData(data) {
+    let resultItem = null;
+
+    for (let elem = this.sentinel.next; elem !== this.sentinel; elem = elem.next) {
+      if (elem.data = data) {
+        resultItem = elem;
+        break;
+      }
     }
 
-    async makeQuery(query, params) {
+    if (resultItem) {
+      resultItem.next.prev = resultItem.prev;
+      resultItem.prev.next = resultItem.next;
+      resultItem.next = null;
+      resultItem.prev = null;
+    }
 
+    return resultItem;
+  }
+}
+
+class DbConnection {
+    constructor(options, poolSize = 1) {
+      this.freeConnList = new List();
+      this.connList = new List();
+      GLOBAL_COUNTER = 0;
+
+      for (let i = 0; i < poolSize; ++i) {
+        let conn = mysql2.createConnection(options).promise();
+        const connElem = new ListElement(conn);
+        this.freeConnList.insert(connElem);
+      }
+    }
+
+    async _getFreeConn() {
+      let resultConn = null;
+      
+      while (true) {
+        const connElem = this.freeConnList.getFirst();
+       
+        if (connElem === null) {
+          await setImmediatePromise();
+        } else {
+          resultConn = connElem.data;
+          this.connList.insert(connElem);
+          break;
+        }
+      }
+
+      return resultConn;
+    }
+
+    _putConnToFreeList(conn) {
+      let connElem = this.connList.getbyData(conn);
+      this.freeConnList.insert(connElem);
     }
 
     async query(query, params) {
       try {
-          const [ result ] = await this.dbCon.query(query, params);
-          return result;
-      } catch (e) {
-          const date = DateUtils.getCurrentDateTimeForLog();
-          console.log(date + " - " + e.red)
-          return null;
-      }
-    }
-    
-    castQuery(query, params) {
-      return this.dbCon.query(query, params);
-    }
+        const dbCon = await this._getFreeConn();
 
-    async getResponse(pendingQuery) {
-      try {
-        const [ result ] = await pendingQuery;
+        const [ result ] = await dbCon.query(query, params);
+        this._putConnToFreeList(dbCon);
+
         return result;
       } catch (e) {
         const date = DateUtils.getCurrentDateTimeForLog();
-        console.log(date.green + " - " + e.red)
-        return null;
-      }
-    }
-
-    async gather(queryArray) {
-      try {
-        console.log(queryArray);
-        const queryResponse = await Promise.all(queryArray);
-        const result = queryResponse.map(item => item[0]);
-        return result;
-      } catch (e) {
-        const date = DateUtils.getCurrentDateTimeForLog();
-        console.log(date.green + " - " + e.red)
         return null;
       }
     }

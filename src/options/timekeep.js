@@ -1,5 +1,5 @@
 exports.sqlQueryList = {
-    sleep3Sec: "SELECT SLEEP(3);",
+    sleep1Sec: "SELECT SLEEP(1);",
 
     getUserIDFromUserLDAP: "SELECT `id` FROM `Users` WHERE `username_ldap` = ?",
 
