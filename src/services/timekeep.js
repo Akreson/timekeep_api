@@ -81,6 +81,19 @@ const gatherDepartHierarchy = async initUserDepart => {
 }
 
 exports.processGetUserDepartAccessList = async ldapName => {
+
+  console.time("timer");
+
+  let p = [];
+  p.push(dbCon.castQuery(sqlQueryList.sleep3Sec));
+  p.push(dbCon.castQuery(sqlQueryList.sleep3Sec));
+  p.push(dbCon.castQuery(sqlQueryList.sleep3Sec));
+  console.log(p);
+  
+  const a = await dbCon.gather(p);
+  console.timeEnd("timer");
+  console.log(p);
+
   const userIDResult = await dbCon.query(sqlQueryList.getUserIDFromUserLDAP, [ldapName]);
 
   if (!userIDResult.length) return null;
@@ -128,7 +141,7 @@ const initUsersTimekeepLogAggr = (user, checkDate, absentTypeArr, completeArray,
   } else {
     const startTime = DateUtils.setTimeFromStr(checkDate, user.begin_workday);
     const endTime = DateUtils.setTimeFromStr(checkDate, user.end_workday);
-    const setAbsent = isNotTimekeepAbsent ? absentTypeArr[user.absent_id - 1].name : null;
+    let setAbsent = isNotTimekeepAbsent ? absentTypeArr[user.absent_id - 1].name : null;
     setAbsent = DateUtils.isDayOff(checkDate) ? "выходной" : setAbsent;
     
     aggregatedUserResult[user.id_user] = {
@@ -280,6 +293,7 @@ exports.processGetDivisionTimekeepStat = async (divisionID, date) => {
     sqlQueryList.getEmployeesDivisionInfoWithAbsent, [timeRange.low.str, timeRange.high.str, divisionID]));
 
   const [absentType, users] = await dbCon.gather(pendingReq);
+  console.log(absentType, users);
   if (!users.length) return null;
   
   const timekeepLogPendingReq = dbCon.castQuery(

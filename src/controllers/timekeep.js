@@ -115,13 +115,6 @@ exports.getUserTimekeepLog = asynchandler(async (req, res, next) => {
   res.json(result);
 });
 
-// date: {
-//   low: date,
-//   high: date,
-//   type: str,
-//   departs: [ids...],
-// }
-
 exports.getDivisionsReports = asynchandler(async (req, res, next) => {
   const reqData = req.body["data"];
 

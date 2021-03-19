@@ -120,7 +120,7 @@ class DateUtils {
     return result;
   }
 
-  static getCurrentDataTimeForLog() {
+  static getCurrentDateTimeForLog() {
     const date = new Date().toLocaleString("uk-UK", {timeZone: "Europe/Kiev"});
     return date;
   }
