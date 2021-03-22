@@ -6,6 +6,8 @@ exports.sqlQueryList = {
     getUserAllowedDeparts: "SELECT `department_id` FROM `UsersDepartments` WHERE `user_id` = ?",
 
     getDepartsInfo: "SELECT `id`, `is_department`, `parent_id`, `name` FROM `Departments` WHERE `id` IN (?)",
+    
+    getAbsentType: "SELECT * FROM timekeeping.Absent;",
 
     // нужно передавать время в формате DATE
     getEmployeesDivisionInfoWithAbsent: `
@@ -16,7 +18,8 @@ exports.sqlQueryList = {
         CONVERT(end_workday, TIME) as end_workday,
         time_worked_type,
         dt_creation,
-        AbsentLog.absent_id
+        AbsentLog.absent_id,
+        AbsentLog.comment
       FROM 
         Employees
       LEFT JOIN AbsentLog ON
@@ -28,10 +31,24 @@ exports.sqlQueryList = {
         AND
         Employees.department_id = ?;`,
 
-    getAbsentType: "SELECT * FROM timekeeping.Absent;",
+    getMultipleDivisionEmployees: `
+      SELECT 
+        id_user, 
+        name, 
+        CONVERT(begin_workday, TIME) as begin_workday,
+        CONVERT(end_workday, TIME) as end_workday,
+        time_worked_type,
+        dt_creation,
+        department_id
+      FROM 
+        Employees
+      WHERE 
+        Employees.deleted = 0
+        AND
+        Employees.department_id IN(?);`,
 
     // нужно передавать время в формате DATE
-    getDivisionTimekeepLog: `
+    getDivisionsTimekeepLog: `
       SELECT
         ControllersLog.direction,
         ControllersLog.dt_event as time,
@@ -47,7 +64,7 @@ exports.sqlQueryList = {
         AND
         Employees.deleted = 0
         AND
-        Employees.department_id = ?
+        Employees.department_id IN(?)
       WHERE 
         DATE(ControllersLog.dt_event) between DATE(?) and DATE(?)
       ORDER BY time;`,
@@ -73,7 +90,7 @@ exports.sqlQueryList = {
       FROM
         Controllers
       WHERE
-        id_controller IN (?);`,
+        id_controller IN(?);`,
     
     getUserInfoWithAbsent: `
       SELECT 
@@ -92,4 +109,22 @@ exports.sqlQueryList = {
         DATE(AbsentLog.date) between DATE(?) and DATE(?)
       WHERE 
         Employees.id_user = ?;`,
+    
+    getDivisionsAbsentLog: `
+      SELECT
+        employee_id,
+        absent_id,
+        date,
+        comment
+      FROM
+        AbsentLog
+      INNER JOIN Employees ON
+        Employees.id_user = AbsentLog.employee_id
+        AND
+        Employees.deleted = 0
+        AND
+        Employees.department_id IN(?)
+      WHERE 
+        date between DATE(?) and DATE(?)
+      ORDER BY date;`,
 };

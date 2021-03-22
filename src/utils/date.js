@@ -37,6 +37,16 @@ class DateUtils {
     return [years, month, day];
   }
 
+  static getDatePartStr(date) {
+    let [years, month, day] = DateUtils.getDatePartArr(date);
+    month++;
+
+    month = month < 10 ? '0' + month : month;
+    day = day < 10 ? '0' + day : day;
+
+    return `${years}-${month}-${day}`;
+  }
+
   static getDatePartObj(date) {
     const years = date.getFullYear();
     const month = date.getMonth();
@@ -54,10 +64,13 @@ class DateUtils {
     return [hours, minutes, seconds];
   }
 
+  static getTimeArrFromStr(timeStr) {
+    const result = timeStr.split(":").map(item => Number(item));
+    return result;
+  }
+
   static getTimePartStr(date) {
-    let hours = date.getHours();
-    let minutes = date.getMinutes();
-    let seconds = date.getSeconds();
+    let [hours, minutes, seconds] = DateUtils.getTimePart(date);
 
     hours = hours < 10 ? '0' + hours : hours;
     minutes = minutes < 10 ? '0' + minutes : minutes;
@@ -82,6 +95,13 @@ class DateUtils {
     let resultDate = new Date(date);
     const [hours, minutes, seconds] = timeStr.split(":").map(item => Number(item));
     resultDate.setHours(hours, minutes, seconds);
+
+    return resultDate;
+  }
+
+  static setTimeFromArr(date, timeArr) {
+    let resultDate = new Date(date);
+    resultDate.setHours(timeArr[0], timeArr[1], timeArr[2]);
 
     return resultDate;
   }
@@ -128,6 +148,12 @@ class DateUtils {
   static getTimezoneInMillisec() {
     const offset = -DateUtils.timezoneInMinutes * DateUtils.hoursToMillisec;
     return offset;
+  }
+
+  static addDay(date, count = 1) {
+    const millisecToAdd = count * DateUtils.daysToMillisec;
+    const dateResult = new Date(date.getTime() + millisecToAdd);
+    return dateResult;
   }
 
   // less then

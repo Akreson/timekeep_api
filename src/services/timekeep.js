@@ -101,7 +101,7 @@ exports.processGetUserDepartAccessList = async ldapName => {
   return result;
 }
 
-const getUserLogObj = () => {
+const getUserResultLogObj = () => {
   let result = {
     name: null,
     ldapName: null,
@@ -116,15 +116,11 @@ const getUserLogObj = () => {
 }
 
 const initUsersTimekeepLogAggr = (user, checkDate, absentTypeArr, completeArray, aggregatedUserResult) => {
-  let resultUserObj = getUserLogObj();
+  let resultUserObj = getUserResultLogObj();
 
   // опоздание, прогул, ранний уход
   const isNotTimekeepAbsent = (user.absent_id !== null) &&
     (user.absent_id !== 1) && (user.absent_id !== 2) && (user.absent_id !== 7);
-
-  if (DateUtils.areDatePartEq(user.dt_creation, checkDate)) {
-    resultUserObj.note = "заведен в табельный учет";
-  }
 
   if (DateUtils.areDatePartGt(user.dt_creation, checkDate)) {
     resultUserObj.name = user.name;
@@ -138,11 +134,14 @@ const initUsersTimekeepLogAggr = (user, checkDate, absentTypeArr, completeArray,
     
     aggregatedUserResult[user.id_user] = {
       name: user.name,
-      absentType: setAbsent,
       timeType: user.time_worked_type,
+ 
       // date obj
       start: startTime,
       end: endTime,
+ 
+      comment: user.comment,
+      absentType: setAbsent,
       // millisecond
       firstIn: null,
       lastOut: null
@@ -162,7 +161,7 @@ const setUserStricTimekeepLogTime = (userObj, log) => {
     }
   }
   else if (log.direction === 0) {
-    if (userObj.lastOut === null) {
+    if (userObj.lastOut === null) { //TODO: check if _in_ exist
       userObj.lastOut = logTime;
     } else {
       if (logTime > userObj.lastOut) userObj.lastOut = logTime
@@ -177,6 +176,14 @@ const setUserNotStricTimekeepLogTime = (userObj, log) => {
     userObj.firstIn = logTime;
   } else if (logTime > userObj.firstIn) {
     userObj.lastOut = logTime
+  }
+}
+
+const setUserTimekeepLogTime = (timeType, userLogObj, log) => {
+  if (timeType === 1) {
+    setUserStricTimekeepLogTime(userLogObj, log);
+  } else if (timeType === 2) {
+    setUserNotStricTimekeepLogTime(userLogObj, log);
   }
 }
 
@@ -246,7 +253,7 @@ const aggregateUsersLogStats = (resultArr, aggregatedUser, timeRange) => {
   for (const key in aggregatedUser) {
     const userLog = aggregatedUser[key];
     
-    let userResult = getUserLogObj();
+    let userResult = getUserResultLogObj();
     userResult.name = userLog.name;
     userResult.ldapName = key;
     
@@ -271,6 +278,7 @@ const aggregateUsersLogStats = (resultArr, aggregatedUser, timeRange) => {
       userResult.absentType = userLog.absentType;  
     }
 
+    userResult.note = userLog.comment;
     resultArr.push(userResult);
   }
 }
@@ -285,17 +293,17 @@ exports.processGetDivisionTimekeepStat = async (divisionID, date) => {
     sqlQueryList.getEmployeesDivisionInfoWithAbsent, [timeRange.low.str, timeRange.high.str, divisionID]));
 
   const [absentType, users] = await Promise.all(pendingReq);
-  console.log(absentType, users);
   if (!users.length) return null;
   
   const timekeepLogPendingReq = dbCon.query(
-    sqlQueryList.getDivisionTimekeepLog, [divisionID, timeRange.low.str, timeRange.high.str]);
+    sqlQueryList.getDivisionsTimekeepLog, [[divisionID], timeRange.low.str, timeRange.high.str]);
   
   let aggregatedUser = {};
   users.forEach(user => {
     initUsersTimekeepLogAggr(user, timeRange.low.date, absentType, result, aggregatedUser);
   })
 
+  // TODO: set day of for all empl if it day of and log is empty
   let timekeepLog = await timekeepLogPendingReq;
   if (!timekeepLog.length) return null;
   
@@ -311,6 +319,7 @@ exports.processGetDivisionTimekeepStat = async (divisionID, date) => {
 
   aggregateUsersLogStats(result, aggregatedUser, timeRange);
   result.sort((a, b) => a.name.localeCompare(b.name));
+  console.log(result);
 
   return result;
 }
@@ -400,8 +409,126 @@ exports.processGetUserTimekeepLog = async (ldapName, date) => {
   return result;
 }
 
-exports.processGetDivisionsReports = () => {
-  return "Ok"
+const getUserLogObj = () => {
+  const result = {
+    note: null,
+    firstIn: null,
+    lastOut: null,
+    absentType: null,
+  };
+
+  return result;
+}
+
+const initUserInfoLookUpTabels = employees => {
+  let userLogInfoTable = {};
+  let userResultTable = {};
+
+  employees.forEach(empl => {
+    if (!userLogInfoTable.hasOwnProperty(empl.id_user)) {
+      userLogInfoTable[empl.id_user] = {
+        departID: empl.department_id,
+        startTime: DateUtils.getTimeArrFromStr(empl.begin_workday),
+        endTime: DateUtils.getTimeArrFromStr(empl.end_workday),
+        logObj: null
+      }
+    }
+
+    if (!userResultTable.hasOwnProperty(empl.department_id)) {
+      userResultTable[empl.department_id] = {};
+    }
+
+    userResultTable[empl.department_id][empl.id_user] = {
+      name: empl.name,
+      timeType: empl.time_worked_type,
+      daysResult: []
+    }
+  })
+
+  return [userLogInfoTable, userResultTable];
+}
+
+const clearUserInfoLogObj = userLogInfoTable => {
+  const emptyUserLogObj = getUserLogObj();
+  for (const key in userLogInfoTable) {
+    userLogInfoTable[key].logObj = emptyUserLogObj;
+  }
+}
+
+exports.processGetDivisionsReports = async (departs, type, lowDate, highDate) => {
+  const lowDateStr = DateUtils.getDatePartStr(lowDate);
+  const highDateStr = DateUtils.getDatePartStr(highDate);
+  const pendingReqParams = [departs, lowDateStr, highDateStr];
+
+  let pendingReq = [];
+  pendingReq.push(dbCon.query(sqlQueryList.getAbsentType));
+  pendingReq.push(dbCon.query(sqlQueryList.getMultipleDivisionEmployees, departs));
+  pendingReq.push(dbCon.query(sqlQueryList.getDivisionsAbsentLog, pendingReqParams));
+
+  const timekeepLogPendignReq = dbCon.query(sqlQueryList.getDivisionsTimekeepLog, pendingReqParams);
+  const [absentType, employees, absentLog] = await Promise.all(pendingReq);
+  
+  //console.log(absentLog.length);
+
+  let [userLogInfoTable, userResultTable] = initUserInfoLookUpTabels(employees);
+  const timekeepLog = await timekeepLogPendignReq;
+  
+ // console.log(timekeepLog);
+
+  let blockingSince = Date.now() // TODO: add setImmidiatePromise() on 100ms
+  let checkDate = lowDate;
+  let AbsentLogIndex = 0;
+  let TimekeepLogIndex = 0;
+  while (!DateUtils.areDatePartGt(checkDate, highDate)) {
+    clearUserInfoLogObj(userLogInfoTable);
+    
+    console.log('absentlog ', checkDate);
+    for (; AbsentLogIndex < absentLog.length; AbsentLogIndex++) {
+      const absentElem = absentLog[AbsentLogIndex];
+
+      if (!DateUtils.areDatePartEq(checkDate, absentElem.date)) {
+        //if (i !== AbsentLogIndex) AbsentLogIndex = i;
+        break;
+      }
+      console.log(AbsentLogIndex, absentLog[AbsentLogIndex]);
+
+      let userLogInfo = userLogInfoTable[absentElem.employee_id];
+      userLogInfo.absentType = absentElem.absent_id;
+      userLogInfo.note = absentElem.comment.length ? absentElem.comment : null;
+    }
+
+    // TODO: fix earle in
+    console.log('timelog ', checkDate);
+    for (; TimekeepLogIndex < timekeepLog.length; TimekeepLogIndex++) {
+      const timekeepElem = timekeepLog[TimekeepLogIndex];
+
+      if (!DateUtils.areDatePartEq(checkDate, timekeepElem.time)) {
+        //if (i !== TimekeepLogIndex) TimekeepLogIndex = i;
+        break; 
+      }
+
+      const userID = timekeepElem.id_user;
+      let userLogInfo = userLogInfoTable[userID];
+      const userWorkType = userResultTable[userLogInfo.departID][userID].timeType;
+      setUserTimekeepLogTime(userWorkType, userLogInfo.logObj, timekeepElem);
+      console.log(TimekeepLogIndex, timekeepElem);
+    }
+
+    // console.log(JSON.stringify(userLogInfoTable, null, 3));
+    // break;
+
+    checkDate = DateUtils.addDay(checkDate);
+
+    if (blockingSince + 150 > Date.now) {
+      await setImmediatePromise();
+      blockingSince = Date.now();
+    }
+  }
+
+  // const used = process.memoryUsage().heapUsed / 1024 / 1024;
+  // console.log(`Used memory: ${used}`);
+
+  return "Ok";
 }
 
 /*

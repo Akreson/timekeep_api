@@ -75,54 +75,57 @@ class List {
 }
 
 class DbConnection {
-    constructor(options, poolSize = 1) {
-      this.freeConnList = new List();
-      this.connList = new List();
-      GLOBAL_COUNTER = 0;
+  constructor(options, poolSize = 1) {
+    this.freeConnList = new List();
+    this.connList = new List();
+    GLOBAL_COUNTER = 0;
 
-      for (let i = 0; i < poolSize; ++i) {
-        let conn = mysql2.createConnection(options).promise();
-        const connElem = new ListElement(conn);
-        this.freeConnList.insert(connElem);
-      }
-    }
-
-    async _getFreeConn() {
-      let resultConn = null;
-      
-      while (true) {
-        const connElem = this.freeConnList.getFirst();
-       
-        if (connElem === null) {
-          await setImmediatePromise();
-        } else {
-          resultConn = connElem.data;
-          this.connList.insert(connElem);
-          break;
-        }
-      }
-
-      return resultConn;
-    }
-
-    _putConnToFreeList(conn) {
-      let connElem = this.connList.getbyData(conn);
+    for (let i = 0; i < poolSize; ++i) {
+      let conn = mysql2.createConnection(options).promise();
+      const connElem = new ListElement(conn);
       this.freeConnList.insert(connElem);
     }
+  }
 
-    async query(query, params) {
-      try {
-        const dbCon = await this._getFreeConn();
-
-        const [ result ] = await dbCon.query(query, params);
-        this._putConnToFreeList(dbCon);
-
-        return result;
-      } catch (e) {
-        const date = DateUtils.getCurrentDateTimeForLog();
-        return null;
+  async _getFreeConn() {
+    let resultConn = null;
+    
+    while (true) {
+      const connElem = this.freeConnList.getFirst();
+      
+      if (connElem === null) {
+        await setImmediatePromise();
+      } else {
+        resultConn = connElem.data;
+        this.connList.insert(connElem);
+        break;
       }
     }
+
+    return resultConn;
+  }
+
+  _putConnToFreeList(conn) {
+    let connElem = this.connList.getbyData(conn);
+    this.freeConnList.insert(connElem);
+  }
+
+  async query(query, params) {
+    try {
+      console.log(params);
+      const dbCon = await this._getFreeConn();
+
+      const [ result ] = await dbCon.query(query, params);
+      this._putConnToFreeList(dbCon);
+
+      return result;
+    } catch (e) {
+      const date = DateUtils.getCurrentDateTimeForLog();
+      console.log(query);
+      console.log(date.green + ' ' + e.red)
+      return null;
+    }
+  }
 }
 
 module.exports = DbConnection;
