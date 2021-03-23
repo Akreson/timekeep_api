@@ -258,7 +258,7 @@ const setUserEnterResultStats = (userResult, userLog, absentTable) => {
   }
 }
 
-const setUserExitResultStats = (userResult, userLog, absentTable, islookAtCurrDate) => {
+const setUserExitResultStats = (userResult, userLog, absentTable, currentTime, islookAtCurrDate) => {
   const endTime = userLog.end.getTime();
   const exitDate = new Date(userLog.lastOut);
   userResult.exit = DateUtils.getTimePartStr(exitDate);
@@ -274,46 +274,51 @@ const setUserExitResultStats = (userResult, userLog, absentTable, islookAtCurrDa
   }
 }
 
+
+const setPresenceUserLogInfo = (logResult, userLog, absentTable, checkDate, currentDate) => {
+  const currentTime = (new Date()).getTime();
+  const islookAtCurrDate = checkDate.getTime() === currentDate.getTime();
+  
+  if (userLog.firstIn !== null) {
+    setUserEnterResultStats(logResult, userLog, absentTable);
+  }
+  
+  if (userLog.lastOut !== null)  {
+    setUserExitResultStats(logResult, userLog, absentTable, currentTime, islookAtCurrDate);
+  }
+
+  if ((userLog.firstIn !== null) && (userLog.lastOut !== null))  {
+    logResult.worked = calcWorkTime(userLog.firstIn, userLog.lastOut);
+  } else {
+    if ((userLog.firstIn === null) && (userLog.lastOut !== null)) {
+      logResult.exit = null; 
+    }
+    logResult.absentType.push(absentTable.notShow.id);;
+  }
+  
+  if (userLog.absentType.length) {
+    logResult.absentType = userLog.absentType;  
+  }
+  
+  if (DateUtils.isDayOff(checkDate)) {
+    logResult.absentType = "выходной";
+  } else {
+    logResult.absentType = absentIdToName(absentTable, logResult.absentType);
+  }
+}
+
 const aggregateUsersLogStats = (resultArr, aggregatedUser, absentTable, timeRange) => {
   const currentDate = DateUtils.getNowDate();
-  const currentTime = (new Date()).getTime();
-  const islookAtCurrDate = timeRange.low.date.getTime() === currentDate.getTime();
-  
+
   for (const key in aggregatedUser) {
     const userLog = aggregatedUser[key];
     
     let userResult = getUserResultLogObj();
-    userResult.name = userLog.name;
     userResult.ldapName = key;
-    
-    if (userLog.firstIn !== null) {
-      setUserEnterResultStats(userResult, userLog, absentTable);
-    }
-    
-    if (userLog.lastOut !== null)  {
-      setUserExitResultStats(userResult, userLog, absentTable, islookAtCurrDate);
-    }
-
-    if ((userLog.firstIn !== null) && (userLog.lastOut !== null))  {
-      userResult.worked = calcWorkTime(userLog.firstIn, userLog.lastOut);
-    } else {
-      if ((userLog.firstIn === null) && (userLog.lastOut !== null)) {
-        userResult.exit = null; 
-      }
-      userResult.absentType.push(absentTable.notShow.id);;
-    }
-    
-    if (userLog.absentType.length) {
-      userResult.absentType = userLog.absentType;  
-    }
-    
-    if (DateUtils.isDayOff(timeRange.low.date)) {
-      userResult.absentType = "выходной";
-    } else {
-      userResult.absentType = absentIdToName(absentTable, userResult.absentType);
-    }    
-    
+    userResult.name = userLog.name;
     userResult.note = userLog.comment;
+    
+    setPresenceUserLogInfo(userResult, userLog, absentTable, timeRange.low.date, currentDate);
     resultArr.push(userResult);
   }
 }
@@ -447,17 +452,6 @@ exports.processGetUserTimekeepLog = async (ldapName, date) => {
   return result;
 }
 
-const getUserLogObj = () => {
-  const result = {
-    note: null,
-    firstIn: null,
-    lastOut: null,
-    absentType: null,
-  };
-
-  return result;
-}
-
 const initUserInfoLookUpTabels = employees => {
   let userLogInfoTable = {};
   let userResultTable = {};
@@ -487,30 +481,49 @@ const initUserInfoLookUpTabels = employees => {
 
   return [userLogInfoTable, userResultTable];
 }
+const getUserLogObj = () => {
+  const result = {
+    note: null,
+    firstIn: null,
+    lastOut: null,
+    absentType: [],
+  };
+
+  return result;
+}
 
 const clearUserInfoLogObj = userLogInfoTable => {
-  const emptyUserLogObj = getUserLogObj();
   for (const key in userLogInfoTable) {
-    userLogInfoTable[key].logObj = emptyUserLogObj;
+    userLogInfoTable[key].logObj = getUserLogObj();
   }
 }
 
 const aggregateUserLogDayInfo = (userLogInfoTable, userResultTable, absentTable, checkDate) => {
+  const currentDate = DateUtils.getNowDate();
+
   for (const userID in userLogInfoTable) {
     const userLog = userLogInfoTable[userID];
     const user = userResultTable[userLog.departID][userID];
     let logResult = getUserResultLogObj();
     logResult.name = user.name;
     logResult.ldapName = userID;
+    logResult.note = userLog.note;
     
     if (!DateUtils.areDatePartGt(user.created, checkDate)) {
+
       // опоздание, прогул, ранний уход
       const isNotTimekeepAbsent = (user.absent_id !== null) &&
         (user.absent_id !== 1) && (user.absent_id !== 2) && (user.absent_id !== 7);
-
       logResult.absentType = isNotTimekeepAbsent ? userLog.absentType : null;
-        //setAbsent = DateUtils.isDayOff(checkDate) ? "выходной" : setAbsent;
 
+      // TODO: Collate or do own implementaion for this func
+      setPresenceUserLogInfo(logResult, userLog, absentTable, checkDate, currentDate);
+
+      const userDayResult = {
+        day: DateUtils.getDatePartStrCustom(checkDate),
+        log: daysResult
+      };
+      user.daysResult.push(uesrDayResult);
     }
   }
 }
@@ -539,6 +552,7 @@ exports.processGetDivisionsReports = async (departs, type, lowDate, highDate) =>
   let checkDate = lowDate;
   let AbsentLogIndex = 0;
   let TimekeepLogIndex = 0;
+  console.log(userLogInfoTable);
   while (!DateUtils.areDatePartGt(checkDate, highDate)) {
     clearUserInfoLogObj(userLogInfoTable);
     
@@ -548,8 +562,10 @@ exports.processGetDivisionsReports = async (departs, type, lowDate, highDate) =>
       if (!DateUtils.areDatePartEq(checkDate, absentElem.date)) break;
 
       let userLogInfo = userLogInfoTable[absentElem.employee_id];
-      userLogInfo.absentType = absentElem.absent_id;
-      userLogInfo.note = absentElem.comment.length ? absentElem.comment : null;
+      console.log(userLogInfo);
+      console.log(typeof userLogInfo.absentType);
+      userLogInfo.logObj.absentType.push(absentElem.absent_id);
+      userLogInfo.logObj.note = absentElem.comment.length ? absentElem.comment : null;
     }
 
     for (; TimekeepLogIndex < timekeepLog.length; TimekeepLogIndex++) {
