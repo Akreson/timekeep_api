@@ -47,6 +47,16 @@ class DateUtils {
     return `${years}-${month}-${day}`;
   }
 
+  static getDatePartStrCustom(date) {
+    let [years, month, day] = DateUtils.getDatePartArr(date);
+    month++;
+
+    month = month < 10 ? '0' + month : month;
+    day = day < 10 ? '0' + day : day;
+
+    return `${day}.${month}.${years}`;
+  }
+
   static getDatePartObj(date) {
     const years = date.getFullYear();
     const month = date.getMonth();
