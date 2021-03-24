@@ -105,11 +105,11 @@ const getUserResultLogObj = () => {
   let result = {
     name: null,
     ldapName: null,
-    absentType: [],
     enter: null,
     exit: null,
     worked: null,
     note: null,
+    absentType: [],
   };
 
   return result;
@@ -150,13 +150,12 @@ const absentIdToName = (absentTable, absentTypeArr) => {
 }
 
 const initUsersTimekeepLogAggr = (user, checkDate, completeArray, aggregatedUserResult) => {
-  let resultUserObj = getUserResultLogObj();
-
   // опоздание, прогул, ранний уход
   const isNotTimekeepAbsent = (user.absent_id !== null) &&
-    (user.absent_id !== 1) && (user.absent_id !== 2) && (user.absent_id !== 7);
-
+  (user.absent_id !== 1) && (user.absent_id !== 2) && (user.absent_id !== 7);
+  
   if (DateUtils.areDatePartGt(user.dt_creation, checkDate)) {
+    let resultUserObj = getUserResultLogObj();
     resultUserObj.name = user.name;
     resultUserObj.ldapName = user.id_user;
     completeArray.push(resultUserObj);
@@ -166,57 +165,63 @@ const initUsersTimekeepLogAggr = (user, checkDate, completeArray, aggregatedUser
     const setAbsent = isNotTimekeepAbsent ? [user.absent_id] : [];
     
     aggregatedUserResult[user.id_user] = {
-      name: user.name,
-      timeType: user.time_worked_type,
- 
-      // date obj
-      start: startTime,
-      end: endTime,
- 
-      comment: user.comment,
-      absentType: setAbsent,
-      // millisecond
-      firstIn: null,
-      lastOut: null
+      info: {
+        name: user.name,
+        timeType: user.time_worked_type,
+  
+        // date obj
+        workTime: {
+          start: startTime,
+          end: endTime,
+        }
+      },
+      log: {
+        note: user.comment,
+        absentType: setAbsent,
+
+        // millisecond
+        firstIn: null,
+        lastOut: null
+      }
     };
   }
 }
 
-const setUserStricTimekeepLogTime = (userObj, log) => {
+const setUserStricTimekeepLogTime = (userLog, log) => {
   const logTime = log.time.getTime();
 
   // 1 - in, 0 - out
   if (log.direction === 1) {
-    if ((userObj.firstIn === null) || (userObj.lastOut === null)) {
-      userObj.firstIn = logTime;
+    if ((userLog.firstIn === null) || (userLog.lastOut === null)) {
+      userLog.firstIn = logTime;
     } else {
-      if (logTime < userObj.firstIn) userObj.firstIn = logTime
+      if (logTime < userLog.firstIn) userLog.firstIn = logTime
     }
   }
   else if (log.direction === 0) {
-    if (userObj.lastOut === null) { //TODO: check if _in_ exist
-      userObj.lastOut = logTime;
+    if (userLog.lastOut === null) { //TODO: check if _in_ exist
+      userLog.lastOut = logTime;
     } else {
-      if (logTime > userObj.lastOut) userObj.lastOut = logTime
+      if (logTime > userLog.lastOut) userLog.lastOut = logTime
     }
   }
 }
 
-const setUserNotStricTimekeepLogTime = (userObj, log) => {
+const setUserNotStricTimekeepLogTime = (userLog, log) => {
   const logTime = log.time.getTime();
   
-  if (userObj.firstIn === null) {
-    userObj.firstIn = logTime;
-  } else if (logTime > userObj.firstIn) {
-    userObj.lastOut = logTime
+  if (userLog.firstIn === null) {
+    userLog.firstIn = logTime;
+  } else if (logTime > userLog.firstIn) {
+    userLog.lastOut = logTime
   }
 }
 
-const setUserTimekeepLogTime = (timeType, userLogObj, log) => {
+const setUserTimekeepLogTime = (timeType, userLog, log) => {
   if (timeType === 1) {
-    setUserStricTimekeepLogTime(userLogObj, log);
+    setUserStricTimekeepLogTime(userLog, log);
   } else if (timeType === 2) {
-    setUserNotStricTimekeepLogTime(userLogObj, log);
+    setUserNotStricTimekeepLogTime(userLog, log);
   }
 }
 
@@ -243,8 +248,8 @@ const calcWorkTime = (start, end) => {
   return timeStr;
 }
 
-const setUserEnterResultStats = (userResult, userLog, absentTable) => {
-  const startTime = userLog.start.getTime();
+const setUserEnterResultStats = (userResult, userLog, start, absentTable) => {
+  const startTime = start.getTime();
   const enterDate = new Date(userLog.firstIn);
   userResult.enter = DateUtils.getTimePartStr(enterDate);
   
@@ -258,16 +263,16 @@ const setUserEnterResultStats = (userResult, userLog, absentTable) => {
   }
 }
 
-const setUserExitResultStats = (userResult, userLog, absentTable, currentTime, islookAtCurrDate) => {
-  const endTime = userLog.end.getTime();
+const setUserExitResultStats = (userResult, userLog, end, absentTable, currentTime, islookAtCurrDate) => {
+  const endTime = end.getTime();
   const exitDate = new Date(userLog.lastOut);
   userResult.exit = DateUtils.getTimePartStr(exitDate);
 
   if (endTime > userLog.lastOut) {
     //if (userLog.lastOut > startTime) {
-      if (!islookAtCurrDate || (currentTime > endTime)) {
-        userResult.absentType.push(absentTable.earlyOut.id);
-      }
+    if (!islookAtCurrDate || (currentTime > endTime)) {
+      userResult.absentType.push(absentTable.earlyOut.id);
+    }
     //} else {
     //  userResult.absentType = "Прогул";
     //}
@@ -275,16 +280,18 @@ const setUserExitResultStats = (userResult, userLog, absentTable, currentTime, i
 }
 
 
-const setPresenceUserLogInfo = (logResult, userLog, absentTable, checkDate, currentDate) => {
+const setPresenceUserLogInfo = (logResult, userLog, workTime, absentTable, checkDate, currentDate) => {
+  //console.log(logResult);
+  
   const currentTime = (new Date()).getTime();
   const islookAtCurrDate = checkDate.getTime() === currentDate.getTime();
   
   if (userLog.firstIn !== null) {
-    setUserEnterResultStats(logResult, userLog, absentTable);
+    setUserEnterResultStats(logResult, userLog, workTime.start, absentTable);
   }
   
   if (userLog.lastOut !== null)  {
-    setUserExitResultStats(logResult, userLog, absentTable, currentTime, islookAtCurrDate);
+    setUserExitResultStats(logResult, userLog, workTime.end, absentTable, currentTime, islookAtCurrDate);
   }
 
   if ((userLog.firstIn !== null) && (userLog.lastOut !== null))  {
@@ -293,9 +300,10 @@ const setPresenceUserLogInfo = (logResult, userLog, absentTable, checkDate, curr
     if ((userLog.firstIn === null) && (userLog.lastOut !== null)) {
       logResult.exit = null; 
     }
-    logResult.absentType.push(absentTable.notShow.id);;
+    logResult.absentType.push(absentTable.notShow.id);
   }
   
+  // (isNotTimekeepAbsent) опоздание, прогул, ранний уход
   if (userLog.absentType.length) {
     logResult.absentType = userLog.absentType;  
   }
@@ -311,14 +319,14 @@ const aggregateUsersLogStats = (resultArr, aggregatedUser, absentTable, timeRang
   const currentDate = DateUtils.getNowDate();
 
   for (const key in aggregatedUser) {
-    const userLog = aggregatedUser[key];
+    const user = aggregatedUser[key];
     
     let userResult = getUserResultLogObj();
     userResult.ldapName = key;
-    userResult.name = userLog.name;
-    userResult.note = userLog.comment;
+    userResult.name = user.info.name;
+    userResult.note = user.log.note;
     
-    setPresenceUserLogInfo(userResult, userLog, absentTable, timeRange.low.date, currentDate);
+    setPresenceUserLogInfo(userResult, user.log, user.info.workTime, absentTable, timeRange.low.date, currentDate);
     resultArr.push(userResult);
   }
 }
@@ -334,7 +342,6 @@ exports.processGetDivisionTimekeepStat = async (divisionID, date) => {
 
   const [absentType, users] = await Promise.all(pendingReq);
   if (!users.length) return null;
-
   
   const timekeepLogPendingReq = dbCon.query(
     sqlQueryList.getDivisionsTimekeepLog, [[divisionID], timeRange.low.str, timeRange.high.str]);
@@ -351,12 +358,7 @@ exports.processGetDivisionTimekeepStat = async (divisionID, date) => {
   
   timekeepLog.forEach(log => {
     let userObj = aggregatedUser[log.id_user];
-
-    if (userObj.timeType === 1) {
-      setUserStricTimekeepLogTime(userObj, log);
-    } else if (userObj.timeType === 2) {
-      setUserNotStricTimekeepLogTime(userObj, log);
-    }
+    setUserTimekeepLogTime(userObj.info.timeType, userObj.log, log);
   });
 
   aggregateUsersLogStats(result, aggregatedUser, absentTable, timeRange);
@@ -419,17 +421,13 @@ exports.processGetUserTimekeepLog = async (ldapName, date) => {
   let contrLogListResult = [];
   if (timekeepLog.length) {
     let contrKeyIdObj = {};
-    let userLogObj = aggregatedUser[ldapName];
+    let userObj = aggregatedUser[ldapName];
     timekeepLog.forEach(controllerLog => {
       if (contrKeyIdObj[controllerLog.id_controller] === undefined) {
         contrKeyIdObj[controllerLog.id_controller] = 0;
       }
       
-      if (userLogObj.timeType === 1) {
-        setUserStricTimekeepLogTime(userLogObj, controllerLog);
-      } else if (userLogObj.timeType === 2) {
-        setUserNotStricTimekeepLogTime(userLogObj, controllerLog);
-      }
+      setUserTimekeepLogTime(userObj.info.timeType, userObj.log, controllerLog);
     });
     
     const controllersID = Object.keys(contrKeyIdObj);
@@ -462,7 +460,7 @@ const initUserInfoLookUpTabels = employees => {
         departID: empl.department_id,
         startTime: DateUtils.getTimeArrFromStr(empl.begin_workday),
         endTime: DateUtils.getTimeArrFromStr(empl.end_workday),
-        logObj: null
+        log: null
       };
     }
 
@@ -472,6 +470,7 @@ const initUserInfoLookUpTabels = employees => {
 
     userResultTable[empl.department_id][empl.id_user] = {
       name: empl.name,
+      ldapName: empl.id_user,
       timeType: empl.time_worked_type,
       created: empl.dt_creation,
       //resultLength: 0,
@@ -492,39 +491,54 @@ const getUserLogObj = () => {
   return result;
 }
 
+const getUserResultLogObjUnnamed = () => {
+  let result = {
+    enter: null,
+    exit: null,
+    worked: null,
+    note: null,
+    absentType: [],
+  };
+
+  return result
+}
+
 const clearUserInfoLogObj = userLogInfoTable => {
   for (const key in userLogInfoTable) {
-    userLogInfoTable[key].logObj = getUserLogObj();
+    userLogInfoTable[key].log = getUserLogObj();
   }
 }
 
 const aggregateUserLogDayInfo = (userLogInfoTable, userResultTable, absentTable, checkDate) => {
   const currentDate = DateUtils.getNowDate();
+  const currentTime = (new Date()).getTime();
+  const islookAtCurrDate = checkDate.getTime() === currentDate.getTime();
+  const dateCustomStr = DateUtils.getDatePartStrCustom(checkDate);
 
   for (const userID in userLogInfoTable) {
     const userLog = userLogInfoTable[userID];
     const user = userResultTable[userLog.departID][userID];
-    let logResult = getUserResultLogObj();
-    logResult.name = user.name;
-    logResult.ldapName = userID;
-    logResult.note = userLog.note;
+
+    let logResult = getUserResultLogObjUnnamed();
+    logResult.note = userLog.log.note;
+
+    let userDayResult = {
+      day: dateCustomStr,
+      log: null
+    };
     
     if (!DateUtils.areDatePartGt(user.created, checkDate)) {
-
-      // опоздание, прогул, ранний уход
-      const isNotTimekeepAbsent = (user.absent_id !== null) &&
-        (user.absent_id !== 1) && (user.absent_id !== 2) && (user.absent_id !== 7);
-      logResult.absentType = isNotTimekeepAbsent ? userLog.absentType : null;
-
-      // TODO: Collate or do own implementaion for this func
-      setPresenceUserLogInfo(logResult, userLog, absentTable, checkDate, currentDate);
-
-      const userDayResult = {
-        day: DateUtils.getDatePartStrCustom(checkDate),
-        log: daysResult
+      
+      const workTime = {
+        start: DateUtils.setTimeFromArr(checkDate, userLog.startTime),
+        end: DateUtils.setTimeFromArr(checkDate, userLog.endTime)
       };
-      user.daysResult.push(uesrDayResult);
+      
+      setPresenceUserLogInfo(logResult, userLog.log, workTime, absentTable, checkDate, currentDate);
+      userDayResult.log = logResult;
     }
+
+    user.daysResult.push(userDayResult);
   }
 }
 
@@ -542,41 +556,42 @@ exports.processGetDivisionsReports = async (departs, type, lowDate, highDate) =>
   const [absentType, employees, absentLog] = await Promise.all(pendingReq);
   
   //console.log(absentLog.length);
-  const absentTable = buildAbsentTabel(absentLog);
+  const absentTable = buildAbsentTabel(absentType);
   let [userLogInfoTable, userResultTable] = initUserInfoLookUpTabels(employees);
   const timekeepLog = await timekeepLogPendignReq;
   
  // console.log(timekeepLog);
 
-  let blockingSince = Date.now()
-  let checkDate = lowDate;
-  let AbsentLogIndex = 0;
-  let TimekeepLogIndex = 0;
-  console.log(userLogInfoTable);
+ console.time('A');
+
+ let absentLogIndex = 0;
+ let timekeepLogIndex = 0;
+ let checkDate = lowDate;
+ let blockingSince = Date.now()
+ 
   while (!DateUtils.areDatePartGt(checkDate, highDate)) {
     clearUserInfoLogObj(userLogInfoTable);
     
-    for (; AbsentLogIndex < absentLog.length; AbsentLogIndex++) {
-      const absentElem = absentLog[AbsentLogIndex];
+    for (; absentLogIndex < absentLog.length; absentLogIndex++) {
+      const absentElem = absentLog[absentLogIndex];
 
       if (!DateUtils.areDatePartEq(checkDate, absentElem.date)) break;
 
       let userLogInfo = userLogInfoTable[absentElem.employee_id];
-      console.log(userLogInfo);
-      console.log(typeof userLogInfo.absentType);
-      userLogInfo.logObj.absentType.push(absentElem.absent_id);
-      userLogInfo.logObj.note = absentElem.comment.length ? absentElem.comment : null;
+      userLogInfo.log.absentType.push(absentElem.absent_id);
+      userLogInfo.log.note = absentElem.comment.length ? absentElem.comment : null;
     }
 
-    for (; TimekeepLogIndex < timekeepLog.length; TimekeepLogIndex++) {
-      const timekeepElem = timekeepLog[TimekeepLogIndex];
+    for (; timekeepLogIndex < timekeepLog.length; timekeepLogIndex++) {
+      const timekeepElem = timekeepLog[timekeepLogIndex];
       
       if (!DateUtils.areDatePartEq(checkDate, timekeepElem.time)) break;
 
       const userID = timekeepElem.id_user;
       let userLogInfo = userLogInfoTable[userID];
       const userWorkType = userResultTable[userLogInfo.departID][userID].timeType;
-      setUserTimekeepLogTime(userWorkType, userLogInfo.logObj, timekeepElem);
+
+      setUserTimekeepLogTime(userWorkType, userLogInfo.log, timekeepElem);
     }
 
     aggregateUserLogDayInfo(userLogInfoTable, userResultTable, absentTable, checkDate);
@@ -588,6 +603,7 @@ exports.processGetDivisionsReports = async (departs, type, lowDate, highDate) =>
       blockingSince = Date.now();
     }
   }
+  console.log(JSON.stringify(userResultTable, null, 3));
 
   // const used = process.memoryUsage().heapUsed / 1024 / 1024;
   // console.log(`Used memory: ${used}`);
