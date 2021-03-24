@@ -149,7 +149,12 @@ exports.getDivisionsReports = asynchandler(async (req, res, next) => {
     return next(new ErrorResponse("Неуказаны отделы для отчета", 400, "ValidationError"));
   }
 
-  const response = await processGetDivisionsReports(reqData.departs, reqData.type, lowDate, highDate);
+  const daysRange = {
+    low: lowDate,
+    high: highDate
+  };
+
+  const response = await processGetDivisionsReports(reqData.departs, reqData.type, daysRange);
   if (!response) {
     return next(new ErrorResponse("Данных не найдено", 400, "ValidationError"));
   }

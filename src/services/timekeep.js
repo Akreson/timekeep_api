@@ -542,34 +542,13 @@ const aggregateUserLogDayInfo = (userLogInfoTable, userResultTable, absentTable,
   }
 }
 
-exports.processGetDivisionsReports = async (departs, type, lowDate, highDate) => {
-  const lowDateStr = DateUtils.getDatePartStr(lowDate);
-  const highDateStr = DateUtils.getDatePartStr(highDate);
-  const pendingReqParams = [departs, lowDateStr, highDateStr];
+const constractReportData = async (userLogInfoTable, userResultTable, absentTable, absentLog, timekeepLog, daysRange) => {
+  let absentLogIndex = 0;
+  let timekeepLogIndex = 0;
+  let checkDate = daysRange.low;
+  let blockingSince = Date.now()
 
-  let pendingReq = [];
-  pendingReq.push(dbCon.query(sqlQueryList.getAbsentType));
-  pendingReq.push(dbCon.query(sqlQueryList.getMultipleDivisionEmployees, departs));
-  pendingReq.push(dbCon.query(sqlQueryList.getDivisionsAbsentLog, pendingReqParams));
-
-  const timekeepLogPendignReq = dbCon.query(sqlQueryList.getDivisionsTimekeepLog, pendingReqParams);
-  const [absentType, employees, absentLog] = await Promise.all(pendingReq);
-  
-  //console.log(absentLog.length);
-  const absentTable = buildAbsentTabel(absentType);
-  let [userLogInfoTable, userResultTable] = initUserInfoLookUpTabels(employees);
-  const timekeepLog = await timekeepLogPendignReq;
-  
- // console.log(timekeepLog);
-
- console.time('A');
-
- let absentLogIndex = 0;
- let timekeepLogIndex = 0;
- let checkDate = lowDate;
- let blockingSince = Date.now()
- 
-  while (!DateUtils.areDatePartGt(checkDate, highDate)) {
+  while (!DateUtils.areDatePartGt(checkDate, daysRange.high)) {
     clearUserInfoLogObj(userLogInfoTable);
     
     for (; absentLogIndex < absentLog.length; absentLogIndex++) {
@@ -597,16 +576,43 @@ exports.processGetDivisionsReports = async (departs, type, lowDate, highDate) =>
     aggregateUserLogDayInfo(userLogInfoTable, userResultTable, absentTable, checkDate);
 
     checkDate = DateUtils.addDay(checkDate);
-    
-    if (blockingSince + 150 > Date.now()) {
+    if ((blockingSince + 200) < Date.now()) {
       await setImmediatePromise();
       blockingSince = Date.now();
     }
   }
-  console.log(JSON.stringify(userResultTable, null, 3));
+}
 
+exports.processGetDivisionsReports = async (departs, type, daysRange) => {
+  const lowDateStr = DateUtils.getDatePartStr(daysRange.low);
+  const highDateStr = DateUtils.getDatePartStr(daysRange.high);
+  const pendingReqParams = [departs, lowDateStr, highDateStr];
+
+  let pendingReq = [];
+  pendingReq.push(dbCon.query(sqlQueryList.getAbsentType));
+  pendingReq.push(dbCon.query(sqlQueryList.getMultipleDivisionEmployees, [departs]));
+  pendingReq.push(dbCon.query(sqlQueryList.getDivisionsAbsentLog, pendingReqParams));
+
+  const timekeepLogPendignReq = dbCon.query(sqlQueryList.getDivisionsTimekeepLog, pendingReqParams);
+  const [absentType, employees, absentLog] = await Promise.all(pendingReq);
+  
+  //console.log(absentLog.length);
+  const absentTable = buildAbsentTabel(absentType);
+  let [userLogInfoTable, userResultTable] = initUserInfoLookUpTabels(employees);
+  const timekeepLog = await timekeepLogPendignReq;
+  //console.log(timekeepLog);
+
+  //console.time('A');
+
+  await constractReportData(userLogInfoTable, userResultTable, absentTable, absentLog, timekeepLog, daysRange);
+  delete timekeepLog;
+  delete absentLog;
+
+  // console.timeEnd('A');
   // const used = process.memoryUsage().heapUsed / 1024 / 1024;
   // console.log(`Used memory: ${used}`);
+  
+  // console.log(JSON.stringify(userResultTable, null, 3));
 
   return "Ok";
 }

@@ -112,7 +112,7 @@ class DbConnection {
 
   async query(query, params) {
     try {
-      //console.log(params);
+      console.log(params);
       const dbCon = await this._getFreeConn();
 
       const [ result ] = await dbCon.query(query, params);
