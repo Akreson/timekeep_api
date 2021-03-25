@@ -9,6 +9,7 @@ const { sqlQueryList } = require("../options/timekeep");
 const {
   setImmediatePromise,
   setTimeoutPromise,
+  initArray
 } = require("../utils/shared");
 
 const timeToAbsentMillices = 2 * DateUtils.hoursToMillisec;
@@ -143,7 +144,7 @@ const absentIdToName = (absentTable, absentTypeArr) => {
       resultStr = "опоздание и ранний уход"  
     }
   } else if (absentTypeArr.length === 1) { 
-    resultStr = absentTable.idToNameMap[absentTypeArr[0]];
+    resultStr = absentTable.idToNameMap[absentTypeArr[0] - 1];
   }
 
   return resultStr
@@ -161,11 +162,7 @@ const setAbsentTypeArrToStr = (absentTable, absentTypeArr, checkDate) => {
   return result;
 }
 
-const initUsersTimekeepLogAggr = (user, checkDate, completeArray, aggregatedUserResult) => {
-  // опоздание, прогул, ранний уход
-  const isNotTimekeepAbsent = (user.absent_id !== null) &&
-  (user.absent_id !== 1) && (user.absent_id !== 2) && (user.absent_id !== 7);
-  
+const initUsersTimekeepLogAggr = (user, checkDate, completeArray, aggregatedUserResult) => {  
   if (DateUtils.areDatePartGt(user.dt_creation, checkDate)) {
     let resultUserObj = getUserResultLogObj();
     resultUserObj.name = user.name;
@@ -175,6 +172,11 @@ const initUsersTimekeepLogAggr = (user, checkDate, completeArray, aggregatedUser
   } else {
     const startTime = DateUtils.setTimeFromStr(checkDate, user.begin_workday);
     const endTime = DateUtils.setTimeFromStr(checkDate, user.end_workday);
+
+    // опоздание, прогул, ранний уход
+    const isNotTimekeepAbsent = (user.absent_id !== null) &&
+      (user.absent_id !== 1) && (user.absent_id !== 2) && (user.absent_id !== 7);
+
     const setAbsent = isNotTimekeepAbsent ? [user.absent_id] : [];
     
     aggregatedUserResult[user.id_user] = {
@@ -459,7 +461,7 @@ exports.processGetUserTimekeepLog = async (userID, date) => {
   return result;
 }
 
-const initUserInfoLookUpTabels = employees => {
+const initUserInfoLookUpTabels = (employees, absentTypesCount) => {
   let userLogInfoTable = {};
   let userResultTable = {};
 
@@ -474,15 +476,18 @@ const initUserInfoLookUpTabels = employees => {
     }
 
     if (!userResultTable.hasOwnProperty(empl.department_id)) {
-      userResultTable[empl.department_id] = {};
+      userResultTable[empl.department_id] = {
+        absentStat: initArray(absentTypesCount, 0),
+        user: {}
+      };
     }
 
-    userResultTable[empl.department_id][empl.id_user] = {
+    userResultTable[empl.department_id].user[empl.id_user] = {
       name: empl.name,
       userID: empl.id_user,
       timeType: empl.time_worked_type,
       created: empl.dt_creation,
-      //resultLength: 0,
+      absentStat: initArray(absentTypesCount, 0),
       daysResult: []
     };
   })
@@ -526,7 +531,8 @@ const aggregateUserLogDayInfo = (userLogInfoTable, userResultTable, absentTable,
 
   for (const userID in userLogInfoTable) {
     const userLog = userLogInfoTable[userID];
-    const user = userResultTable[userLog.departID][userID];
+    let depart = userResultTable[userLog.departID];
+    let user = depart.user[userID];
 
     let logResult = getUserResultLogObjUnnamed();
     logResult.note = userLog.log.note;
@@ -544,8 +550,16 @@ const aggregateUserLogDayInfo = (userLogInfoTable, userResultTable, absentTable,
       };
       
       setPresenceUserLogInfo(logResult, userLog.log, workTime, absentTable, checkDate, currentDate);
-      logResult.absentType = setAbsentTypeArrToStr(absentTable, logResult.absentType, checkDate);
 
+      if (logResult.absentType.length) {
+        logResult.absentType.forEach(id => {
+          const offsetID = id - 1;
+          user.absentStat[offsetID]++;
+          depart.absentStat[offsetID]++;
+        });
+      }
+
+      logResult.absentType = setAbsentTypeArrToStr(absentTable, logResult.absentType, checkDate);
       userDayResult.log = logResult;
     }
 
@@ -579,7 +593,7 @@ const constractReportData = async (userLogInfoTable, userResultTable, absentTabl
 
       const userID = timekeepElem.id_user;
       let userLogInfo = userLogInfoTable[userID];
-      const userWorkType = userResultTable[userLogInfo.departID][userID].timeType;
+      const userWorkType = userResultTable[userLogInfo.departID].user[userID].timeType;
 
       setUserTimekeepLogTime(userWorkType, userLogInfo.log, timekeepElem);
     }
@@ -609,19 +623,23 @@ exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   
   //console.log(absentLog.length);
   const absentTable = buildAbsentTabel(absentType);
-  let [userLogInfoTable, userResultTable] = initUserInfoLookUpTabels(employees);
+  let [userLogInfoTable, userResultTable] = initUserInfoLookUpTabels(employees, absentTable.idToNameMap.length);
   const timekeepLog = await timekeepLogPendignReq;
   //console.log(timekeepLog);
 
-  //console.time('A');
+  console.time('constractReportData');
 
+  //console.log(userResultTable);
   await constractReportData(userLogInfoTable, userResultTable, absentTable, absentLog, timekeepLog, daysRange);
   delete timekeepLog;
   delete absentLog;
 
-  // console.timeEnd('A');
-  // const used = process.memoryUsage().heapUsed / 1024 / 1024;
-  // console.log(`Used memory: ${used}`);
+  //console.log(JSON.stringify(userResultTable, null, 3));
+
+  console.timeEnd('constractReportData');
+
+  const used = process.memoryUsage().heapUsed / 1024 / 1024;
+  console.log(`Used memory: ${used}`);
   
   // console.log(JSON.stringify(userResultTable, null, 3));
 
