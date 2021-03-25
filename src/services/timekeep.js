@@ -93,7 +93,7 @@ exports.processGetUserDepartAccessList = async ldapName => {
   
   const userAllowDepart = await dbCon.query(sqlQueryList.getUserAllowedDeparts, [userID]);
   if (!userAllowDepart.length) return null;
-  
+
   const allowDepartsIDs = userAllowDepart.map(item => item.department_id);
   const gatherDeparts = await gatherDepartHierarchy(allowDepartsIDs);
   const result = buildResultDepartsHierarchy(gatherDeparts);
@@ -125,7 +125,11 @@ const buildAbsentTabel = absentType => {
     dayOff: absentType[5],  //Отгул
     earlyOut: absentType[6],//Ранний уход
     sick: absentType[7],    //Больничный
-  }
+
+    idToNameMap: []
+  };
+
+  absentTable.idToNameMap = absentType.map(item => item.name);
 
   return absentTable;
 }
@@ -139,11 +143,7 @@ const absentIdToName = (absentTable, absentTypeArr) => {
       resultStr = "опоздание и ранний уход"  
     }
   } else { 
-    for (const key in absentTable) {
-      const type = absentTable[key];
-      
-      if (type.id == absentTypeArr[0]) resultStr = type.name;
-    }
+    resultStr = idToNameMap[absentTypeArr[0]];
   }
 
   return resultStr
