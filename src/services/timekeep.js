@@ -9,7 +9,8 @@ const { sqlQueryList } = require("../options/timekeep");
 const {
   setImmediatePromise,
   setTimeoutPromise,
-  initArray
+  initArray,
+  cloneObj
 } = require("../utils/shared");
 
 const timeToAbsentMillices = 2 * DateUtils.hoursToMillisec;
@@ -25,18 +26,27 @@ const sortDepartByName = departsArray => {
   });
 }
 
-const buildResultDepartsHierarchy = gatheredDepartInfo => {
+const setDefaultDepartTreeObj = (id, obj) => {
+  const result = {
+    id: Number(id),
+    name: obj.name,
+    child: obj.child
+  };
+
+  return result;
+}
+
+const buildResultDepartsHierarchy = (gatheredDepartInfo, setObjFunc) => {
   let result = [];
+
+  if (setObjFunc === undefined)
+    setObjFunc = setDefaultDepartTreeObj;
 
   // создаем дерево департаментов основываясь на parentID
   for (const key in gatheredDepartInfo) {
     const current = gatheredDepartInfo[key];
 
-    const objToPush = {
-      id: Number(key),
-      name: current.name,
-      child: current.child
-    }
+    const objToPush = setObjFunc(key, current);
 
     if (current.parentID !== null) {
       const parent = gatheredDepartInfo[current.parentID];
@@ -96,6 +106,7 @@ exports.processGetUserDepartAccessList = async ldapName => {
   if (!userAllowDepart.length) return null;
 
   const allowDepartsIDs = userAllowDepart.map(item => item.department_id);
+
   const gatherDeparts = await gatherDepartHierarchy(allowDepartsIDs);
   const result = buildResultDepartsHierarchy(gatherDeparts);
 
@@ -296,8 +307,6 @@ const setUserExitResultStats = (userResult, userLog, end, absentTable, currentTi
 
 
 const setPresenceUserLogInfo = (logResult, userLog, workTime, absentTable, checkDate, currentDate) => {
-  //console.log(logResult);
-  
   const currentTime = (new Date()).getTime();
   const islookAtCurrDate = checkDate.getTime() === currentDate.getTime();
   
@@ -374,7 +383,6 @@ exports.processGetDivisionTimekeepStat = async (divisionID, date) => {
 
   aggregateUsersLogStats(result, aggregatedUser, absentTable, timeRange);
   result.sort((a, b) => a.name.localeCompare(b.name));
-  //console.log(result);
 
   return result;
 }
@@ -488,12 +496,19 @@ const initUserInfoLookUpTabels = (employees, absentTypesCount) => {
       timeType: empl.time_worked_type,
       created: empl.dt_creation,
       absentStat: initArray(absentTypesCount, 0),
-      daysResult: []
+      daysLog: []
     };
   })
 
   return [userLogInfoTable, userResultTable];
 }
+
+const clearUserInfoLogObj = userLogInfoTable => {
+  for (const key in userLogInfoTable) {
+    userLogInfoTable[key].log = getUserLogObj();
+  }
+}
+
 const getUserLogObj = () => {
   const result = {
     note: null,
@@ -515,12 +530,6 @@ const getUserResultLogObjUnnamed = () => {
   };
 
   return result
-}
-
-const clearUserInfoLogObj = userLogInfoTable => {
-  for (const key in userLogInfoTable) {
-    userLogInfoTable[key].log = getUserLogObj();
-  }
 }
 
 const aggregateUserLogDayInfo = (userLogInfoTable, userResultTable, absentTable, checkDate) => {
@@ -563,7 +572,7 @@ const aggregateUserLogDayInfo = (userLogInfoTable, userResultTable, absentTable,
       userDayResult.log = logResult;
     }
 
-    user.daysResult.push(userDayResult);
+    user.daysLog.push(userDayResult);
   }
 }
 
@@ -608,6 +617,51 @@ const constractReportData = async (userLogInfoTable, userResultTable, absentTabl
   }
 }
 
+const setReportDepartTreeObj = (id, obj) => {
+  const users = obj.users !== undefined ? obj.users : null;
+
+  const result = {
+    id: Number(id),
+    name: obj.name,
+    absentStat: obj.absentStat,
+    users: users,
+    child: obj.child
+  };
+  
+  return result;
+}
+
+const propagateDepartsAbsentInfo = (userResultTable, gatherDeparts, absentTypesCount) => {
+  for (const departID in userResultTable) {
+    const depart = userResultTable[departID];
+    gatherDeparts[departID].absentStat = depart.absentStat;
+
+    let parentID = depart.parentID;
+    while (parentID !== null) {
+      let parentDepart = gatherDeparts[parentID];
+
+      if (parentDepart.absentStat === undefined) {
+        parentDepart.absentStat = initArray(absentTypesCount, 0);
+      }
+
+      parentDepart.absentStat.forEach((accum, index) => {
+        accum += depart.absentStat[index]
+      });
+
+      parentID = parentDepart.parentID;
+    }
+  }
+}
+
+const buildAbsentInfoReport = (userResultTable, gatherDeparts, absentTable) => {
+
+}
+
+const buildFullReport = (userResultTable, gatherDeparts, absentTable) => {
+
+}
+
+
 exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   const lowDateStr = DateUtils.getDatePartStr(daysRange.low);
   const highDateStr = DateUtils.getDatePartStr(daysRange.high);
@@ -634,10 +688,20 @@ exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   delete timekeepLog;
   delete absentLog;
 
+  let gatherDeparts = await gatherDepartHierarchy(departs);
+
+  let result = null;
+  if ((type === "web") || (type === "general")) {
+    result = buildAbsentInfoReport(userResultTable, gatherDeparts);
+  } else if (type === "full") {
+    result = buildFullReport(userResultTable, gatherDeparts);
+  }
+  
+  //propagateDepartsAbsentInfo(userResultTable, gatherDeparts);
+  //const result = buildResultDepartsHierarchy(gatherDeparts, setReportDepartTreeObj);
+
   //console.log(JSON.stringify(userResultTable, null, 3));
-
   console.timeEnd('constractReportData');
-
   const used = process.memoryUsage().heapUsed / 1024 / 1024;
   console.log(`Used memory: ${used}`);
   
