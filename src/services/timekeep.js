@@ -104,7 +104,7 @@ exports.processGetUserDepartAccessList = async ldapName => {
 const getUserResultLogObj = () => {
   let result = {
     name: null,
-    ldapName: null,
+    userID: null,
     enter: null,
     exit: null,
     worked: null,
@@ -142,11 +142,23 @@ const absentIdToName = (absentTable, absentTypeArr) => {
       (absentTypeArr[1] === absentTable.earlyOut.id)) {
       resultStr = "опоздание и ранний уход"  
     }
-  } else { 
-    resultStr = idToNameMap[absentTypeArr[0]];
+  } else if (absentTypeArr.length === 1) { 
+    resultStr = absentTable.idToNameMap[absentTypeArr[0]];
   }
 
   return resultStr
+}
+
+const setAbsentTypeArrToStr = (absentTable, absentTypeArr, checkDate) => {
+  let result = null;
+
+  if (DateUtils.isDayOff(checkDate)) {
+    result = "выходной";
+  } else {
+    result = absentIdToName(absentTable, absentTypeArr);
+  }
+
+  return result;
 }
 
 const initUsersTimekeepLogAggr = (user, checkDate, completeArray, aggregatedUserResult) => {
@@ -157,7 +169,8 @@ const initUsersTimekeepLogAggr = (user, checkDate, completeArray, aggregatedUser
   if (DateUtils.areDatePartGt(user.dt_creation, checkDate)) {
     let resultUserObj = getUserResultLogObj();
     resultUserObj.name = user.name;
-    resultUserObj.ldapName = user.id_user;
+    resultUserObj.userID = user.id_user;
+    resultUserObj.absentType = null;
     completeArray.push(resultUserObj);
   } else {
     const startTime = DateUtils.setTimeFromStr(checkDate, user.begin_workday);
@@ -307,12 +320,6 @@ const setPresenceUserLogInfo = (logResult, userLog, workTime, absentTable, check
   if (userLog.absentType.length) {
     logResult.absentType = userLog.absentType;  
   }
-  
-  if (DateUtils.isDayOff(checkDate)) {
-    logResult.absentType = "выходной";
-  } else {
-    logResult.absentType = absentIdToName(absentTable, logResult.absentType);
-  }
 }
 
 const aggregateUsersLogStats = (resultArr, aggregatedUser, absentTable, timeRange) => {
@@ -322,11 +329,13 @@ const aggregateUsersLogStats = (resultArr, aggregatedUser, absentTable, timeRang
     const user = aggregatedUser[key];
     
     let userResult = getUserResultLogObj();
-    userResult.ldapName = key;
+    userResult.userID = key;
     userResult.name = user.info.name;
     userResult.note = user.log.note;
     
     setPresenceUserLogInfo(userResult, user.log, user.info.workTime, absentTable, timeRange.low.date, currentDate);
+    userResult.absentType = setAbsentTypeArrToStr(absentTable, userResult.absentType, timeRange.low.date);
+    
     resultArr.push(userResult);
   }
 }
@@ -395,11 +404,11 @@ const buildControllerLogList = (controllerInfo, contrIdToName, timekeepLog) => {
   return result;
 }
 
-exports.processGetUserTimekeepLog = async (ldapName, date) => {
+exports.processGetUserTimekeepLog = async (userID, date) => {
   const timeRange = DateUtils.getTimeRangeForDate(date);
 
   let pendingReg = [];
-  const pendingRegParams = [timeRange.low.str, timeRange.high.str, ldapName];
+  const pendingRegParams = [timeRange.low.str, timeRange.high.str, userID];
   pendingReg.push(dbCon.query(sqlQueryList.getUserInfoWithAbsent, pendingRegParams));
   pendingReg.push(dbCon.query(sqlQueryList.getUserTimekeepLog, pendingRegParams));
   pendingReg.push(dbCon.query(sqlQueryList.getAbsentType));
@@ -408,7 +417,7 @@ exports.processGetUserTimekeepLog = async (ldapName, date) => {
   if (!userInfo.length) return null;
   
   const user = userInfo[0];
-  user.id_user = ldapName;
+  user.id_user = userID;
   
   const absentTable = buildAbsentTabel(absentType);
   const gatherDeparts = await gatherDepartHierarchy([user.department_id]);
@@ -421,7 +430,7 @@ exports.processGetUserTimekeepLog = async (ldapName, date) => {
   let contrLogListResult = [];
   if (timekeepLog.length) {
     let contrKeyIdObj = {};
-    let userObj = aggregatedUser[ldapName];
+    let userObj = aggregatedUser[userID];
     timekeepLog.forEach(controllerLog => {
       if (contrKeyIdObj[controllerLog.id_controller] === undefined) {
         contrKeyIdObj[controllerLog.id_controller] = 0;
@@ -470,7 +479,7 @@ const initUserInfoLookUpTabels = employees => {
 
     userResultTable[empl.department_id][empl.id_user] = {
       name: empl.name,
-      ldapName: empl.id_user,
+      userID: empl.id_user,
       timeType: empl.time_worked_type,
       created: empl.dt_creation,
       //resultLength: 0,
@@ -535,6 +544,8 @@ const aggregateUserLogDayInfo = (userLogInfoTable, userResultTable, absentTable,
       };
       
       setPresenceUserLogInfo(logResult, userLog.log, workTime, absentTable, checkDate, currentDate);
+      logResult.absentType = setAbsentTypeArrToStr(absentTable, logResult.absentType, checkDate);
+
       userDayResult.log = logResult;
     }
 
