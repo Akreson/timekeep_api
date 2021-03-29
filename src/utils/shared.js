@@ -7,7 +7,9 @@ exports.isObject = testElement => {
 }
 
 exports.initArray = (count, value) => {
-  return (new Array(count)).fill(value);
+  const result = new Array(count);
+  result.fill(value);
+  return result;
 }
 
 exports.cloneObj = obj => {

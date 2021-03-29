@@ -71,11 +71,14 @@ exports.sqlQueryList = {
     
     getUserTimekeepLog: `
       SELECT
-        direction,
-        id_controller,
-        dt_event as time
+        ControllersLog.direction,
+        ControllersLog.id_controller,
+        ControllersLog.dt_event as time,
+        Controllers.use_timekeeping as timekeep
       FROM 
         ControllersLog
+      INNER JOIN Controllers ON
+        Controllers.id_controller = ControllersLog.id_controller
       WHERE 
         DATE(dt_event) between DATE(?) and DATE(?)
       AND

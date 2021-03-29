@@ -140,6 +140,7 @@ const buildAbsentTabel = absentType => {
 
     idToNameMap: []
   };
+  console.log(absentTable);
 
   absentTable.idToNameMap = absentType.map(item => item.name);
 
@@ -169,6 +170,16 @@ const setAbsentTypeArrToStr = (absentTable, absentTypeArr, checkDate) => {
   } else {
     result = absentIdToName(absentTable, absentTypeArr);
   }
+
+  return result;
+}
+
+const absentStatsToDict = (absentTable, statsArr) => {
+  let result = {};
+
+  statsArr.forEach((value, index) => {
+    result[absentTable.idToNameMap[index]] = value;
+  });
 
   return result;
 }
@@ -279,13 +290,13 @@ const setUserEnterResultStats = (userResult, userLog, start, absentTable) => {
   const enterDate = new Date(userLog.firstIn);
   userResult.enter = DateUtils.getTimePartStr(enterDate);
   
-  if (startTime < userLog.firstIn) {
-    const timeDiff = -(startTime - userLog.firstIn);
-    if (timeDiff > timeToAbsentMillices) {
-      userResult.absentType.push(absentTable.notShow.id);
-    } else {
+  if (userLog.firstIn >= startTime) {
+    //const timeDiff = -(startTime - userLog.firstIn);
+    // if (timeDiff > timeToAbsentMillices) {
+    //   userResult.absentType.push(absentTable.notShow.id);
+    // } else {
       userResult.absentType.push(absentTable.lateIn.id);
-    }
+    //}
   }
 }
 
@@ -294,7 +305,7 @@ const setUserExitResultStats = (userResult, userLog, end, absentTable, currentTi
   const exitDate = new Date(userLog.lastOut);
   userResult.exit = DateUtils.getTimePartStr(exitDate);
 
-  if (endTime > userLog.lastOut) {
+  if (userLog.lastOut < endTime) {
     //if (userLog.lastOut > startTime) {
     if (!islookAtCurrDate || (currentTime > endTime)) {
       userResult.absentType.push(absentTable.earlyOut.id);
@@ -305,7 +316,7 @@ const setUserExitResultStats = (userResult, userLog, end, absentTable, currentTi
   }
 }
 
-
+//27.05.2019 1924
 const setPresenceUserLogInfo = (logResult, userLog, workTime, absentTable, checkDate, currentDate) => {
   const currentTime = (new Date()).getTime();
   const islookAtCurrDate = checkDate.getTime() === currentDate.getTime();
@@ -318,15 +329,26 @@ const setPresenceUserLogInfo = (logResult, userLog, workTime, absentTable, check
     setUserExitResultStats(logResult, userLog, workTime.end, absentTable, currentTime, islookAtCurrDate);
   }
 
-  if ((userLog.firstIn !== null) && (userLog.lastOut !== null))  {
-    logResult.worked = calcWorkTime(userLog.firstIn, userLog.lastOut);
+  if ((userLog.firstIn !== null) && (userLog.lastOut !== null)) {
+    if (userLog.lastOut < userLog.firstIn) {
+      logResult.absentType = [];
+      logResult.absentType.push(absentTable.notShow.id);
+      userLog.exit = null;
+    } else {
+      logResult.worked = calcWorkTime(userLog.firstIn, userLog.lastOut);
+    }
   } else {
     if ((userLog.firstIn === null) && (userLog.lastOut !== null)) {
       logResult.exit = null; 
     }
+    logResult.absentType = [];
     logResult.absentType.push(absentTable.notShow.id);
   }
-  
+
+  if (DateUtils.isDayOff(checkDate)) {
+    logResult.absentType = [];
+  }
+
   // (isNotTimekeepAbsent) опоздание, прогул, ранний уход
   if (userLog.absentType.length) {
     logResult.absentType = userLog.absentType;  
@@ -375,6 +397,7 @@ exports.processGetDivisionTimekeepStat = async (divisionID, date) => {
   // TODO: set day of for all empl if it day of and log is empty
   let timekeepLog = await timekeepLogPendingReq;
   if (!timekeepLog.length) return null;
+  console.log(timekeepLog);
   
   timekeepLog.forEach(log => {
     let userObj = aggregatedUser[log.id_user];
@@ -425,6 +448,8 @@ exports.processGetUserTimekeepLog = async (userID, date) => {
 
   const [userInfo, timekeepLog, absentType] = await Promise.all(pendingReg);
   if (!userInfo.length) return null;
+
+  console.log(timekeepLog);
   
   const user = userInfo[0];
   user.id_user = userID;
@@ -445,8 +470,10 @@ exports.processGetUserTimekeepLog = async (userID, date) => {
       if (contrKeyIdObj[controllerLog.id_controller] === undefined) {
         contrKeyIdObj[controllerLog.id_controller] = 0;
       }
-      
-      setUserTimekeepLogTime(userObj.info.timeType, userObj.log, controllerLog);
+
+      if (controllerLog.timekeep) {
+        setUserTimekeepLogTime(userObj.info.timeType, userObj.log, controllerLog);
+      }
     });
     
     const controllersID = Object.keys(contrKeyIdObj);
@@ -532,6 +559,8 @@ const getUserResultLogObjUnnamed = () => {
   return result
 }
 
+let COUNTER = 0;
+
 const aggregateUserLogDayInfo = (userLogInfoTable, userResultTable, absentTable, checkDate) => {
   const currentDate = DateUtils.getNowDate();
   const currentTime = (new Date()).getTime();
@@ -591,7 +620,10 @@ const constractReportData = async (userLogInfoTable, userResultTable, absentTabl
       if (!DateUtils.areDatePartEq(checkDate, absentElem.date)) break;
 
       let userLogInfo = userLogInfoTable[absentElem.employee_id];
-      userLogInfo.log.absentType.push(absentElem.absent_id);
+      if (absentElem.absent_id !== null) {
+        userLogInfo.log.absentType.push(absentElem.absent_id);
+      }
+      
       userLogInfo.log.note = absentElem.comment.length ? absentElem.comment : null;
     }
 
@@ -618,12 +650,13 @@ const constractReportData = async (userLogInfoTable, userResultTable, absentTabl
 }
 
 const setReportDepartTreeObj = (id, obj) => {
-  const users = obj.users !== undefined ? obj.users : null;
+  const users = obj.hasOwnProperty("users") ? obj.users : null;
+  const absentStat = obj.hasOwnProperty("absentStat") ? obj.absentStat : null;
 
   const result = {
     id: Number(id),
     name: obj.name,
-    absentStat: obj.absentStat,
+    absentStat: absentStat,
     users: users,
     child: obj.child
   };
@@ -631,22 +664,41 @@ const setReportDepartTreeObj = (id, obj) => {
   return result;
 }
 
-const propagateDepartsAbsentInfo = (userResultTable, gatherDeparts, absentTypesCount) => {
+const setUserAbsenntReportObj = (absentTable, userResult) => {
+  const result = {};
+  result.name = userResult.name;
+  result.id = userResult.userID;
+  result.absentStat = absentStatsToDict(absentTable, userResult.absentStat);
+  result.daysLog = userResult.daysLog;
+
+  return result;
+}
+
+const insertDepartsTimekeepToHierarchy = (userResultTable, gatherDeparts, absentTable) => {
   for (const departID in userResultTable) {
-    const depart = userResultTable[departID];
-    gatherDeparts[departID].absentStat = depart.absentStat;
+    const insertDepart = userResultTable[departID];
+    const depart = gatherDeparts[departID];
+    
+    depart.absentStat = insertDepart.absentStat;
+    depart.users = [];
+
+    for (const userID in insertDepart.user) {
+      //console.log(userID, insertDepart.user[userID]);
+      const userReport = setUserAbsenntReportObj(absentTable, insertDepart.user[userID]);
+      depart.users.push(userReport);
+    }
 
     let parentID = depart.parentID;
     while (parentID !== null) {
       let parentDepart = gatherDeparts[parentID];
 
-      if (parentDepart.absentStat === undefined) {
-        parentDepart.absentStat = initArray(absentTypesCount, 0);
+      if (!parentDepart.hasOwnProperty("absentStat")) {
+        parentDepart.absentStat = initArray(absentTable.idToNameMap.length, 0);
       }
 
-      parentDepart.absentStat.forEach((accum, index) => {
-        accum += depart.absentStat[index]
-      });
+      for (let i = 0; i < parentDepart.absentStat.length; i++) {
+        parentDepart.absentStat[i] += insertDepart.absentStat[i];
+      }
 
       parentID = parentDepart.parentID;
     }
@@ -654,7 +706,20 @@ const propagateDepartsAbsentInfo = (userResultTable, gatherDeparts, absentTypesC
 }
 
 const buildAbsentInfoReport = (userResultTable, gatherDeparts, absentTable) => {
-
+  insertDepartsTimekeepToHierarchy(userResultTable, gatherDeparts, absentTable);
+  
+  for (const departID in gatherDeparts) {
+    const depart = gatherDeparts[departID];
+    
+    if (depart.hasOwnProperty("absentStat")) {
+      //console.log(depart);
+      depart.absentStat = absentStatsToDict(absentTable, depart.absentStat);
+    }
+  }
+  
+  //console.log(gatherDeparts);
+  const result = buildResultDepartsHierarchy(gatherDeparts, setReportDepartTreeObj);
+  return result;
 }
 
 const buildFullReport = (userResultTable, gatherDeparts, absentTable) => {
@@ -665,47 +730,57 @@ const buildFullReport = (userResultTable, gatherDeparts, absentTable) => {
 exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   const lowDateStr = DateUtils.getDatePartStr(daysRange.low);
   const highDateStr = DateUtils.getDatePartStr(daysRange.high);
-  const pendingReqParams = [departs, lowDateStr, highDateStr];
+  
+  let gatherDeparts = await gatherDepartHierarchy(departs);
+  console.log(gatherDeparts);
 
   let pendingReq = [];
+  const pendingReqParams = [departs, lowDateStr, highDateStr];
   pendingReq.push(dbCon.query(sqlQueryList.getAbsentType));
   pendingReq.push(dbCon.query(sqlQueryList.getMultipleDivisionEmployees, [departs]));
   pendingReq.push(dbCon.query(sqlQueryList.getDivisionsAbsentLog, pendingReqParams));
 
   const timekeepLogPendignReq = dbCon.query(sqlQueryList.getDivisionsTimekeepLog, pendingReqParams);
   const [absentType, employees, absentLog] = await Promise.all(pendingReq);
-  
+
+  //console.log(employees);
+
   //console.log(absentLog.length);
   const absentTable = buildAbsentTabel(absentType);
   let [userLogInfoTable, userResultTable] = initUserInfoLookUpTabels(employees, absentTable.idToNameMap.length);
   const timekeepLog = await timekeepLogPendignReq;
   //console.log(timekeepLog);
 
+  console.time("processReport");
   console.time('constractReportData');
-
   //console.log(userResultTable);
+
   await constractReportData(userLogInfoTable, userResultTable, absentTable, absentLog, timekeepLog, daysRange);
   delete timekeepLog;
   delete absentLog;
 
-  let gatherDeparts = await gatherDepartHierarchy(departs);
+  // for (let userID in userResultTable['96'].user) {
+  //   console.log(userResultTable['96'].user[userID].name, userResultTable['96'].user[userID].absentStat);
+  // }
+  
+  console.timeEnd('constractReportData');  
+  console.time("buildReport");
 
   let result = null;
   if ((type === "web") || (type === "general")) {
-    result = buildAbsentInfoReport(userResultTable, gatherDeparts);
+    result = buildAbsentInfoReport(userResultTable, gatherDeparts, absentTable);
+    console.log(result);
   } else if (type === "full") {
-    result = buildFullReport(userResultTable, gatherDeparts);
+    result = buildFullReport(userResultTable, gatherDeparts, absentTable);
   }
   
-  //propagateDepartsAbsentInfo(userResultTable, gatherDeparts);
-  //const result = buildResultDepartsHierarchy(gatherDeparts, setReportDepartTreeObj);
-
-  //console.log(JSON.stringify(userResultTable, null, 3));
-  console.timeEnd('constractReportData');
+  console.timeEnd("buildReport");
+  console.timeEnd("processReport");
+  
   const used = process.memoryUsage().heapUsed / 1024 / 1024;
   console.log(`Used memory: ${used}`);
   
-  // console.log(JSON.stringify(userResultTable, null, 3));
+  console.log(JSON.stringify(result, null, 3));
 
   return "Ok";
 }
