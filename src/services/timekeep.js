@@ -501,12 +501,14 @@ exports.processGetUserTimekeepLog = async (userID, date) => {
 }
 
 const initUserInfoLookUpTabels = (employees, absentTypesCount) => {
-  let userLogInfoTable = {};
-  let userResultTable = {};
+  let userTables = {
+    LogInfo: {},
+    Result: {}
+  };
 
   employees.forEach(empl => {
-    if (!userLogInfoTable.hasOwnProperty(empl.id_user)) {
-      userLogInfoTable[empl.id_user] = {
+    if (!userTables.LogInfo.hasOwnProperty(empl.id_user)) {
+      userTables.LogInfo[empl.id_user] = {
         departID: empl.department_id,
         startTime: DateUtils.getTimeArrFromStr(empl.begin_workday),
         endTime: DateUtils.getTimeArrFromStr(empl.end_workday),
@@ -514,14 +516,14 @@ const initUserInfoLookUpTabels = (employees, absentTypesCount) => {
       };
     }
 
-    if (!userResultTable.hasOwnProperty(empl.department_id)) {
-      userResultTable[empl.department_id] = {
+    if (!userTables.Result.hasOwnProperty(empl.department_id)) {
+      userTables.Result[empl.department_id] = {
         absentStat: initArray(absentTypesCount, 0),
         user: {}
       };
     }
 
-    userResultTable[empl.department_id].user[empl.id_user] = {
+    userTables.Result[empl.department_id].user[empl.id_user] = {
       name: empl.name,
       userID: empl.id_user,
       timeType: empl.time_worked_type,
@@ -531,7 +533,7 @@ const initUserInfoLookUpTabels = (employees, absentTypesCount) => {
     };
   })
 
-  return [userLogInfoTable, userResultTable];
+  return userTables;
 }
 
 const clearUserInfoLogObj = userLogInfoTable => {
@@ -565,15 +567,15 @@ const getUserResultLogObjUnnamed = () => {
 
 let COUNTER = 0;
 
-const aggregateUserLogDayInfo = (userLogInfoTable, userResultTable, absentTable, checkDate) => {
+const aggregateUserLogDayInfo = (userTables, absentTable, checkDate) => {
   const currentDate = DateUtils.getNowDate();
   const currentTime = (new Date()).getTime();
   const islookAtCurrDate = checkDate.getTime() === currentDate.getTime();
   const dateCustomStr = DateUtils.getDatePartStrCustom(checkDate);
 
-  for (const userID in userLogInfoTable) {
-    const userLog = userLogInfoTable[userID];
-    let depart = userResultTable[userLog.departID];
+  for (const userID in userTables.LogInfo) {
+    const userLog = userTables.LogInfo[userID];
+    let depart = userTables.Result[userLog.departID];
     let user = depart.user[userID];
 
     let logResult = getUserResultLogObjUnnamed();
@@ -609,21 +611,21 @@ const aggregateUserLogDayInfo = (userLogInfoTable, userResultTable, absentTable,
   }
 }
 
-const constractReportData = async (userLogInfoTable, userResultTable, absentTable, absentLog, timekeepLog, daysRange) => {
+const constractReportData = async (userTables, absentTable, absentLog, timekeepLog, daysRange) => {
   let absentLogIndex = 0;
   let timekeepLogIndex = 0;
   let checkDate = daysRange.low;
   let blockingSince = Date.now()
 
   while (!DateUtils.areDatePartGt(checkDate, daysRange.high)) {
-    clearUserInfoLogObj(userLogInfoTable);
+    clearUserInfoLogObj(userTables.LogInfo);
     
     for (; absentLogIndex < absentLog.length; absentLogIndex++) {
       const absentElem = absentLog[absentLogIndex];
 
       if (!DateUtils.areDatePartEq(checkDate, absentElem.date)) break;
 
-      let userLogInfo = userLogInfoTable[absentElem.employee_id];
+      let userLogInfo = userTables.LogInfo[absentElem.employee_id];
       if (absentElem.absent_id !== null) {
         userLogInfo.log.absentType.push(absentElem.absent_id);
       }
@@ -637,13 +639,13 @@ const constractReportData = async (userLogInfoTable, userResultTable, absentTabl
       if (!DateUtils.areDatePartEq(checkDate, timekeepElem.time)) break;
 
       const userID = timekeepElem.id_user;
-      let userLogInfo = userLogInfoTable[userID];
-      const userWorkType = userResultTable[userLogInfo.departID].user[userID].timeType;
+      let userLogInfo = userTables.LogInfo[userID];
+      const userWorkType = userTables.Result[userLogInfo.departID].user[userID].timeType;
 
       setUserTimekeepLogTime(userWorkType, userLogInfo.log, timekeepElem);
     }
 
-    aggregateUserLogDayInfo(userLogInfoTable, userResultTable, absentTable, checkDate);
+    aggregateUserLogDayInfo(userTables, absentTable, checkDate);
 
     checkDate = DateUtils.addDay(checkDate);
     if ((blockingSince + 200) < Date.now()) {
@@ -753,7 +755,7 @@ exports.processGetDivisionsReports = async (departs, type, daysRange) => {
 
   //console.log(absentLog.length);
   const absentTable = buildAbsentTabel(absentType);
-  let [userLogInfoTable, userResultTable] = initUserInfoLookUpTabels(employees, absentTable.idToNameMap.length);
+  let userTables = initUserInfoLookUpTabels(employees, absentTable.idToNameMap.length);
   const timekeepLog = await timekeepLogPendignReq;
   //console.log(timekeepLog);
 
@@ -761,7 +763,7 @@ exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   console.time('constractReportData');
   //console.log(userResultTable);
 
-  await constractReportData(userLogInfoTable, userResultTable, absentTable, absentLog, timekeepLog, daysRange);
+  await constractReportData(userTables, absentTable, absentLog, timekeepLog, daysRange);
   delete timekeepLog;
   delete absentLog;
 
@@ -774,10 +776,10 @@ exports.processGetDivisionsReports = async (departs, type, daysRange) => {
 
   let result = null;
   if ((type === "web") || (type === "general")) {
-    result = buildAbsentInfoReport(userResultTable, gatherDeparts, absentTable);
+    result = buildAbsentInfoReport(userTables.Result, gatherDeparts, absentTable);
     console.log(result);
   } else if (type === "full") {
-    result = buildFullReport(userResultTable, gatherDeparts, absentTable);
+    result = buildFullReport(userTables.Result, gatherDeparts, absentTable);
   }
   
   console.timeEnd("buildReport");
@@ -786,7 +788,7 @@ exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   const used = process.memoryUsage().heapUsed / 1024 / 1024;
   console.log(`Used memory: ${used}`);
   
-  //console.log(JSON.stringify(result, null, 3));
+  console.log(JSON.stringify(result, null, 3));
 
   return "Ok";
 }
