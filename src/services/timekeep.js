@@ -224,19 +224,21 @@ const initUsersTimekeepLogAggr = (user, checkDate, completeArray, aggregatedUser
   }
 }
 
+// NOTE: логи должны обрабатываться в сортированом по временни порядке
 const setUserStricTimekeepLogTime = (userLog, log) => {
   const logTime = log.time.getTime();
 
   // 1 - in, 0 - out
   if (log.direction === 1) {
-    if ((userLog.firstIn === null) || (userLog.lastOut === null)) {
+    if (userLog.lastOut === null) {
       userLog.firstIn = logTime;
-    } else {
-      if (logTime < userLog.firstIn) userLog.firstIn = logTime
+    } else if ((userLog.firstIn === null) && (userLog.lastOut < logTime)) {
+      userLog.lastOut = null;
+      userLog.firstIn = logTime;
     }
   }
   else if (log.direction === 0) {
-    if (userLog.lastOut === null) { //TODO: check if _in_ exist
+    if (userLog.lastOut === null) {
       userLog.lastOut = logTime;
     } else {
       if (logTime > userLog.lastOut) userLog.lastOut = logTime
@@ -249,7 +251,7 @@ const setUserNotStricTimekeepLogTime = (userLog, log) => {
   
   if (userLog.firstIn === null) {
     userLog.firstIn = logTime;
-  } else if (logTime > userLog.firstIn) {
+  } else if (logTime >= userLog.firstIn) {
     userLog.lastOut = logTime
   }
 }
@@ -330,11 +332,13 @@ const setPresenceUserLogInfo = (logResult, userLog, workTime, absentTable, check
   }
 
   if ((userLog.firstIn !== null) && (userLog.lastOut !== null)) {
-    if (userLog.lastOut < userLog.firstIn) {
-      logResult.absentType = [];
-      logResult.absentType.push(absentTable.notShow.id);
-      userLog.exit = null;
-    } else {
+    // if (userLog.lastOut < userLog.firstIn) {
+    //   logResult.absentType = [];
+    //   logResult.absentType.push(absentTable.notShow.id);
+    //   userLog.exit = null;
+    // }
+    // else
+    {
       logResult.worked = calcWorkTime(userLog.firstIn, userLog.lastOut);
     }
   } else {
@@ -688,6 +692,8 @@ const insertDepartsTimekeepToHierarchy = (userResultTable, gatherDeparts, absent
       depart.users.push(userReport);
     }
 
+    depart.users.sort((a, b) => a.name.localeCompare(b.name));
+
     let parentID = depart.parentID;
     while (parentID !== null) {
       let parentDepart = gatherDeparts[parentID];
@@ -780,7 +786,7 @@ exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   const used = process.memoryUsage().heapUsed / 1024 / 1024;
   console.log(`Used memory: ${used}`);
   
-  console.log(JSON.stringify(result, null, 3));
+  //console.log(JSON.stringify(result, null, 3));
 
   return "Ok";
 }
