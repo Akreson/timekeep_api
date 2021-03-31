@@ -794,7 +794,7 @@ const getDepartsToRequest = async departIDs => {
         const depart = departsMap[key];
 
         if (depart.parentID === topLevelID) {
-          resultIdsMap[key] = 0;
+          resultIdsMap[key] = topLevelID;
         }
       }
     })
@@ -806,18 +806,26 @@ const getDepartsToRequest = async departIDs => {
         const depart = departsMap[key];
 
         if ((depart.parentID !== null) && (resultIdsMap[depart.parentID] !== undefined)) {
-          grabResult.push(key) = 0;
+          if (resultIdsMap[key] === undefined) {
+            grabResult.push({id: key, topLevelID: resultIdsMap[depart.parentID]});
+          }
         }
       }
 
       if (!grabResult.length) break;
 
-      grabResult.forEach(id => {
-        resultIdsMap[id] = 0;
-      });
+      grabResult.forEach(obj => {resultIdsMap[obj.id] = obj.topLevelID});
     }
 
-    result = Object.keys(resultIdsMap);
+    result = Object.keys(resultIdsMap).map(id => Number(id));
+
+    if (childs.length) {
+      childs.forEach(id => {
+        if (resultIdsMap[id] === undefined) {
+          result.push(id);
+        }
+      });
+    }
   } else {
     result = childs;
   }
