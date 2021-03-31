@@ -9,6 +9,8 @@ exports.sqlQueryList = {
     
     getAbsentType: "SELECT * FROM timekeeping.Absent;",
 
+    getAllDeparts: "SELECT * FROM `Departments`",
+
     // нужно передавать время в формате DATE
     getEmployeesDivisionInfoWithAbsent: `
       SELECT 

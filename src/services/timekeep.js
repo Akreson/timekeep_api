@@ -744,12 +744,10 @@ const buildAbsentInfoReport = (userResultTable, gatherDeparts, absentTable) => {
     const depart = gatherDeparts[departID];
     
     if (depart.hasOwnProperty("absentStat")) {
-      //console.log(depart);
       depart.absentStat = absentStatsToDict(absentTable, depart.absentStat);
     }
   }
   
-  //console.log(gatherDeparts);
   const result = buildResultDepartsHierarchy(gatherDeparts, setReportDepartTreeObj);
   return result;
 }
@@ -758,11 +756,79 @@ const buildFullReport = (userResultTable, gatherDeparts, absentTable) => {
 
 }
 
+const getAllDepartIdMap = async () => {
+  const allDepartsArr = await dbCon.query(sqlQueryList.getAllDeparts);
+  
+  const resultDepartsIdMap = {};
+  allDepartsArr.forEach(depart => {
+    resultDepartsIdMap[depart.id] = {
+        name: depart.name,
+        isDepart: depart.is_department,
+        order: depart.order,
+        branchID: depart.branch_id,
+        parentID: depart.parent_id
+    };
+  });
+
+  return resultDepartsIdMap;
+}
+
+const getDepartsToRequest = async departIDs => {
+  let result = null;
+
+  const departsMap = await getAllDepartIdMap();
+  const allDepartsArr = await dbCon.query(sqlQueryList.getAllDeparts);
+
+  let topLevel = [];
+  let childs = [];
+
+  departIDs.forEach(id => {
+    if (departsMap[id].isDepart) topLevel.push(id);
+    else childs.push(id);
+  });
+
+  const resultIdsMap = {};
+  if (topLevel.length) {
+    topLevel.forEach(topLevelID => {
+      for (const key in departsMap) {
+        const depart = departsMap[key];
+
+        if (depart.parentID === topLevelID) {
+          resultIdsMap[key] = 0;
+        }
+      }
+    })
+
+    while (true) {
+      let grabResult = [];
+
+      for (const key in departsMap) {
+        const depart = departsMap[key];
+
+        if ((depart.parentID !== null) && (resultIdsMap[depart.parentID] !== undefined)) {
+          grabResult.push(key) = 0;
+        }
+      }
+
+      if (!grabResult.length) break;
+
+      grabResult.forEach(id => {
+        resultIdsMap[id] = 0;
+      });
+    }
+
+    result = Object.keys(resultIdsMap);
+  } else {
+    result = childs;
+  }
+
+  return result;
+}
 
 exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   const lowDateStr = DateUtils.getDatePartStr(daysRange.low);
   const highDateStr = DateUtils.getDatePartStr(daysRange.high);
-  
+
   let gatherDeparts = await gatherDepartHierarchy(departs);
   console.log(gatherDeparts);
 
@@ -772,7 +838,7 @@ exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   pendingReq.push(dbCon.query(sqlQueryList.getMultipleDivisionEmployees, [departs]));
   pendingReq.push(dbCon.query(sqlQueryList.getDivisionsAbsentLog, pendingReqParams));
 
-  const timekeepLogPendignReq = dbCon.query(sqlQueryList.getDivisionsTimekeepLog, pendingReqParams);
+  const timekeepLogPendignReq = c
   const [absentType, employees, absentLog] = await Promise.all(pendingReq);
 
   //console.log(employees);
