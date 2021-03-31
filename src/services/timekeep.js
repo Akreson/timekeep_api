@@ -3,7 +3,11 @@ const mysql2 = require("mysql2");
 const DbConnection = require("../utils/db");
 const DateUtils = require("../utils/date");
 
-const { dbConnectionParams } = require("../configs/info.js");
+const { 
+  dbConnectionParams,
+  ReportTypes
+} = require("../configs/info.js");
+
 const { sqlQueryList } = require("../options/timekeep");
 
 const {
@@ -140,7 +144,7 @@ const buildAbsentTabel = absentType => {
 
     idToNameMap: []
   };
-  console.log(absentTable);
+  //console.log(absentTable);
 
   absentTable.idToNameMap = absentType.map(item => item.name);
 
@@ -565,9 +569,27 @@ const getUserResultLogObjUnnamed = () => {
   return result
 }
 
-let COUNTER = 0;
+const getUserLogDataForReportFull = logResult => {
+    return logResult;
+}
 
-const aggregateUserLogDayInfo = (userTables, absentTable, checkDate) => {
+const getUserLogDataForReportGeneral = logResult => {
+  let result = {
+    absentType: logResult.absentType
+  };
+
+  return result;
+}
+
+const setUserDataReportCallback = type => {
+  if ((type === ReportTypes.web) || (type === ReportTypes.general)) {
+    return getUserLogDataForReportGeneral;
+  } else if (type === ReportTypes.full) {
+    return getUserLogDataForReportFull;
+  }
+}
+
+const aggregateUserLogDayInfo = (userTables, absentTable, checkDate, dataReportCallbackFunc) => {
   const currentDate = DateUtils.getNowDate();
   const currentTime = (new Date()).getTime();
   const islookAtCurrDate = checkDate.getTime() === currentDate.getTime();
@@ -604,18 +626,20 @@ const aggregateUserLogDayInfo = (userTables, absentTable, checkDate) => {
       }
 
       logResult.absentType = setAbsentTypeArrToStr(absentTable, logResult.absentType, checkDate);
-      userDayResult.log = logResult;
+      userDayResult.log = dataReportCallbackFunc(logResult);
     }
 
     user.daysLog.push(userDayResult);
   }
 }
 
-const constractReportData = async (userTables, absentTable, absentLog, timekeepLog, daysRange) => {
+const constractReportData = async (userTables, absentTable, absentLog, timekeepLog, daysRange, type) => {
   let absentLogIndex = 0;
   let timekeepLogIndex = 0;
   let checkDate = daysRange.low;
   let blockingSince = Date.now()
+
+  let dataReportCallbackFunc = setUserDataReportCallback(type);
 
   while (!DateUtils.areDatePartGt(checkDate, daysRange.high)) {
     clearUserInfoLogObj(userTables.LogInfo);
@@ -645,7 +669,7 @@ const constractReportData = async (userTables, absentTable, absentLog, timekeepL
       setUserTimekeepLogTime(userWorkType, userLogInfo.log, timekeepElem);
     }
 
-    aggregateUserLogDayInfo(userTables, absentTable, checkDate);
+    aggregateUserLogDayInfo(userTables, absentTable, checkDate, dataReportCallbackFunc);
 
     checkDate = DateUtils.addDay(checkDate);
     if ((blockingSince + 200) < Date.now()) {
@@ -763,7 +787,7 @@ exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   console.time('constractReportData');
   //console.log(userResultTable);
 
-  await constractReportData(userTables, absentTable, absentLog, timekeepLog, daysRange);
+  await constractReportData(userTables, absentTable, absentLog, timekeepLog, daysRange, type);
   delete timekeepLog;
   delete absentLog;
 
@@ -775,10 +799,9 @@ exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   console.time("buildReport");
 
   let result = null;
-  if ((type === "web") || (type === "general")) {
+  if ((type === ReportTypes.web) || (type === ReportTypes.general)) {
     result = buildAbsentInfoReport(userTables.Result, gatherDeparts, absentTable);
-    console.log(result);
-  } else if (type === "full") {
+  } else if (type === ReportTypes.full) {
     result = buildFullReport(userTables.Result, gatherDeparts, absentTable);
   }
   
@@ -788,7 +811,7 @@ exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   const used = process.memoryUsage().heapUsed / 1024 / 1024;
   console.log(`Used memory: ${used}`);
   
-  console.log(JSON.stringify(result, null, 3));
+  //console.log(JSON.stringify(result, null, 3));
 
   return "Ok";
 }

@@ -4,3 +4,9 @@ exports.dbConnectionParams = {
     password: "123456",
     database: "timekeeping",
 };
+
+exports.ReportTypes = {
+    web: 'web',
+    general: 'general',
+    full: 'full'
+};

@@ -1,6 +1,7 @@
 const asynchandler = require("express-async-handler");
 const ErrorResponse = require("../utils/error-response")
 const DateUtils = require("../utils/date");
+const { ReportTypes } = require("../configs/info");
 
 const {
     processGetUserDepartAccessList,
@@ -119,7 +120,7 @@ exports.getDivisionsReports = asynchandler(async (req, res, next) => {
   const reqData = req.body["data"];
 
   if (isValidStrParam(reqData.type)) {
-    if ((reqData.type !== "web") && (reqData.type !== "general") && (reqData.type !== "full")) {
+    if (!ReportTypes.hasOwnProperty(reqData.type)) {
       return next(new ErrorResponse("Не поддерживаемый формат отчета", 400, "ValidationError"));  
     }
   } else {
