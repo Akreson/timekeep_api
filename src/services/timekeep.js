@@ -862,6 +862,9 @@ const makeReportData = async (pendingReq, departs, type, daysRange) => {
 const makeReportDataDayRange = async (pendingReq, departs, type, daysRange) => {
   let begin = daysRange.low;
   let end = DateUtils.addDay(begin, DaysToProcessAtOnce);
+  if (DateUtils.areDatePartGt(end, daysRange.high)) {
+    end = daysRange.high;
+  }
   console.log(begin, end);
 
   const [absentType, employees] = await Promise.all(pendingReq);
@@ -880,9 +883,9 @@ const makeReportDataDayRange = async (pendingReq, departs, type, daysRange) => {
 
     const lowDateStr = DateUtils.getDatePartStr(newDaysRange.low);
     const highDateStr = DateUtils.getDatePartStr(newDaysRange.high);
-    const pendingReqParams = [departs, lowDateStr, highDateStr];
-
+    
     const logPendingReq = []
+    const pendingReqParams = [departs, lowDateStr, highDateStr];
     logPendingReq.push(dbCon.query(sqlQueryList.getDivisionsAbsentLog, pendingReqParams));
     logPendingReq.push(dbCon.query(sqlQueryList.getDivisionsTimekeepLog, pendingReqParams));
 
@@ -917,26 +920,26 @@ exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   pendingReq.push(dbCon.query(sqlQueryList.getMultipleDivisionEmployees, [departs]));
   
   let tableResult;
-  if (reportDaysRange <= DaysToProcessAtOnce) {
-    tableResult = await makeReportData(pendingReq, departs, type, daysRange);
-  } else {
+  // if (reportDaysRange <= DaysToProcessAtOnce) {
+  //   tableResult = await makeReportData(pendingReq, departs, type, daysRange);
+  // } else {
     tableResult = await makeReportDataDayRange(pendingReq, departs, type, daysRange);
-  }
+  //}
   let [userTables, absentTable] = tableResult;
   
   type = tempType;
   
   let result;
   let gatherDeparts = await gatherDepartHierarchy(departs);
-  if ((type === ReportTypes.web) || (type === ReportTypes.general)) {
+  if ((type === ReportTypes.web) || (type === ReportTypes.fullweb) || (type === ReportTypes.general)) {
     result = buildAbsentInfoReport(userTables.Result, gatherDeparts, absentTable);
   } else if (type === ReportTypes.full) {
     result = buildFullReport(userTables.Result, gatherDeparts, absentTable);
   }
   
-  console.timeEnd("Whole time");
   console.log(result);
   
+  console.timeEnd("Whole time");
   const used = process.memoryUsage().heapUsed / 1024 / 1024;
   console.log(`Used memory: ${used}`);
   
