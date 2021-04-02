@@ -84,7 +84,8 @@ exports.sqlQueryList = {
       WHERE 
         DATE(dt_event) between DATE(?) and DATE(?)
       AND
-        id_user = ?;`,
+        id_user = ?
+      ORDER by time;`,
       
     getControllersMainInfo: `
       SELECT

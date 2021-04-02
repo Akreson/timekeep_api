@@ -165,6 +165,11 @@ class DateUtils {
     return dateResult;
   }
 
+  static daysBeetween(begin, end) {
+    const count = (end - begin) / DateUtils.daysToMillisec;
+    return Math.floor(count);
+  }
+
   // less then
   static areDatePartLt(date1, date2) {
     const dateObj1 = DateUtils.getDatePartObj(date1);

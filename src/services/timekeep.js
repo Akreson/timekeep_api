@@ -227,27 +227,39 @@ const initUsersTimekeepLogAggr = (user, checkDate, completeArray, aggregatedUser
     };
   }
 }
+// http://127.0.0.1:6000/api/timekeep/read/user/log/pl16091980amm/31.07.2019
 
 // NOTE: логи должны обрабатываться в сортированом по временни порядке
 const setUserStricTimekeepLogTime = (userLog, log) => {
   const logTime = log.time.getTime();
 
+  //console.log(log.direction, log.time);
+
   // 1 - in, 0 - out
   if (log.direction === 1) {
     if (userLog.lastOut === null) {
+      //console.log('userLog.lastOut === null');
       userLog.firstIn = logTime;
-    } else if ((userLog.firstIn === null) && (userLog.lastOut <= logTime)) {
+    } else if ((userLog.firstIn === null) && (userLog.lastOut < logTime)) {
+      //console.log('(userLog.firstIn === null) && (userLog.lastOut < logTime)');
       userLog.lastOut = null;
+      userLog.firstIn = logTime;
+    } else if ((userLog.firstIn === null) && (userLog.lastOut === logTime)) {
+      //console.log('(userLog.firstIn === null) && (userLog.lastOut === logTime)')
       userLog.firstIn = logTime;
     }
   }
   else if (log.direction === 0) {
     if (userLog.lastOut === null) {
+      //console.log('userLog.lastOut === null');
       userLog.lastOut = logTime;
     } else if (logTime > userLog.lastOut) {
+      //console.log('logTime > userLog.lastOut');
       userLog.lastOut = logTime
     }
   }
+
+  //console.log(userLog);
 }
 
 const setUserNotStricTimekeepLogTime = (userLog, log) => {
@@ -322,7 +334,6 @@ const setUserExitResultStats = (userResult, userLog, end, absentTable, currentTi
   }
 }
 
-//27.05.2019 1924
 const setPresenceUserLogInfo = (logResult, userLog, workTime, absentTable, checkDate, currentDate) => {
   const currentTime = (new Date()).getTime();
   const islookAtCurrDate = checkDate.getTime() === currentDate.getTime();
@@ -641,15 +652,13 @@ const constractReportData = async (userTables, absentTable, absentLog, timekeepL
 
       if (!DateUtils.areDatePartEq(checkDate, absentElem.date)) break;
 
-      // if (absentElem.employee_id == 'pl13051979mal') {
-      //   console.log(checkDate, absentLogIndex, absentElem);
-      // }
-
       let userLogInfo = userTables.LogInfo[absentElem.employee_id];
       if (absentElem.absent_id !== null) {
-        userLogInfo.log.absentType.push(absentElem.absent_id);
+        const isAlreadyPresent = userLogInfo.log.absentType.findIndex(id => id === absentElem.absent_id);
+        if (isAlreadyPresent === -1) {
+          userLogInfo.log.absentType.push(absentElem.absent_id);
+        }
       }
-      //console.log(userLogInfo.log.absentType);
       
       userLogInfo.log.note = absentElem.comment.length ? absentElem.comment : null;
     }
@@ -829,41 +838,43 @@ const getDepartsToRequest = async departIDs => {
   return result;
 }
 
+const daysToProcessAtOnce = 1 * 365;
+
 exports.processGetDivisionsReports = async (departs, type, daysRange) => {
+  console.log(departs.length);
+  const reportDaysRange = DateUtils.daysBeetween(daysRange.low, daysRange.high);
+
   const lowDateStr = DateUtils.getDatePartStr(daysRange.low);
   const highDateStr = DateUtils.getDatePartStr(daysRange.high);
-
+  
   let gatherDeparts = await gatherDepartHierarchy(departs);
-  console.log(gatherDeparts);
-
+  //console.log(gatherDeparts);
+  
   let pendingReq = [];
   const pendingReqParams = [departs, lowDateStr, highDateStr];
   pendingReq.push(dbCon.query(sqlQueryList.getAbsentType));
   pendingReq.push(dbCon.query(sqlQueryList.getMultipleDivisionEmployees, [departs]));
   pendingReq.push(dbCon.query(sqlQueryList.getDivisionsAbsentLog, pendingReqParams));
-
+  
   const timekeepLogPendignReq = dbCon.query(sqlQueryList.getDivisionsTimekeepLog, pendingReqParams);
   const [absentType, employees, absentLog] = await Promise.all(pendingReq);
-
-  //console.log(employees);
-
-  //console.log(absentLog.length);
+  
   const absentTable = buildAbsentTabel(absentType);
   let userTables = initUserInfoLookUpTabels(employees, absentTable.idToNameMap.length);
   const timekeepLog = await timekeepLogPendignReq;
-  //console.log(timekeepLog);
-
+  
   console.time("processReport");
   console.time('constractReportData');
-  //console.log(userResultTable);
 
+  let tempType = type;
+  type = ReportTypes.full;
+  
   await constractReportData(userTables, absentTable, absentLog, timekeepLog, daysRange, type);
-  delete timekeepLog;
-  delete absentLog;
 
-  // for (let userID in userResultTable['pl110460'].user) {
-  //   console.log(userResultTable['96'].user[userID].name, userResultTable['96'].user[userID].absentStat);
-  // }
+  //delete timekeepLog;
+  //delete absentLog;
+
+  type = tempType;
   
   console.timeEnd('constractReportData');  
   console.time("buildReport");
@@ -882,7 +893,7 @@ exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   const used = process.memoryUsage().heapUsed / 1024 / 1024;
   console.log(`Used memory: ${used}`);
   
-  console.log(JSON.stringify(result, null, 3));
+  //console.log(JSON.stringify(result, null, 3));
 
   return "Ok";
 }
