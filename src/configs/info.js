@@ -8,5 +8,8 @@ exports.dbConnectionParams = {
 exports.ReportTypes = {
     web: 'web',
     general: 'general',
-    full: 'full'
+    full: 'full',
+    fullweb: 'fullweb'
 };
+
+exports.DaysToProcessAtOnce = 10 * 365;

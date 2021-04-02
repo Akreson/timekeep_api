@@ -5,7 +5,8 @@ const DateUtils = require("../utils/date");
 
 const { 
   dbConnectionParams,
-  ReportTypes
+  ReportTypes,
+  DaysToProcessAtOnce
 } = require("../configs/info.js");
 
 const { sqlQueryList } = require("../options/timekeep");
@@ -838,91 +839,102 @@ const getDepartsToRequest = async departIDs => {
   return result;
 }
 
+const makeReportData = async (pendingReq, departs, type, daysRange) => {
+  const lowDateStr = DateUtils.getDatePartStr(daysRange.low);
+  const highDateStr = DateUtils.getDatePartStr(daysRange.high);
+  console.log(daysRange);
+  
+  const logPendingReq = []
+  const pendingReqParams = [departs, lowDateStr, highDateStr];
+  logPendingReq.push(dbCon.query(sqlQueryList.getDivisionsAbsentLog, pendingReqParams));
+  logPendingReq.push(dbCon.query(sqlQueryList.getDivisionsTimekeepLog, pendingReqParams));
+
+  const [absentType, employees] = await Promise.all(pendingReq);
+  let absentTable = buildAbsentTabel(absentType);
+  let userTables = initUserInfoLookUpTabels(employees, absentTable.idToNameMap.length);
+
+  const [absentLog, timekeepLog] = await Promise.all(logPendingReq);
+  await constractReportData(userTables, absentTable, absentLog, timekeepLog, daysRange, type);
+
+  return [userTables, absentTable];
+}
+
+const makeReportDataDayRange = async (pendingReq, departs, type, daysRange) => {
+  let begin = daysRange.low;
+  let end = DateUtils.addDay(begin, DaysToProcessAtOnce);
+  console.log(begin, end);
+
+  const [absentType, employees] = await Promise.all(pendingReq);
+  let absentTable = buildAbsentTabel(absentType);
+  let userTables = initUserInfoLookUpTabels(employees, absentTable.idToNameMap.length);
+
+  while (true) {
+    if (DateUtils.areDatePartGt(begin, daysRange.high)) break;
+
+    let newDaysRange = {
+      low: begin,
+      high: end
+    };
+
+    console.log(newDaysRange);
+
+    const lowDateStr = DateUtils.getDatePartStr(newDaysRange.low);
+    const highDateStr = DateUtils.getDatePartStr(newDaysRange.high);
+    const pendingReqParams = [departs, lowDateStr, highDateStr];
+
+    const logPendingReq = []
+    logPendingReq.push(dbCon.query(sqlQueryList.getDivisionsAbsentLog, pendingReqParams));
+    logPendingReq.push(dbCon.query(sqlQueryList.getDivisionsTimekeepLog, pendingReqParams));
+
+    const [absentLog, timekeepLog] = await Promise.all(logPendingReq);
+    await constractReportData(userTables, absentTable, absentLog, timekeepLog, newDaysRange, type);
+
+    delete absentLog;
+    delete timekeepLog;
+
+    begin = DateUtils.addDay(end);
+    end = DateUtils.addDay(begin, DaysToProcessAtOnce);
+    if (DateUtils.areDatePartGt(end, daysRange.high)) {
+      end = daysRange.high;
+    }
+  }
+
+  return [userTables, absentTable];
+}
 
 exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   console.log(departs.length);
-  const daysToProcessAtOnce = 1 * 365;
 
+  console.time("Whole time");
   const reportDaysRange = DateUtils.daysBeetween(daysRange.low, daysRange.high);
-
+  console.log(reportDaysRange);
+  
   let tempType = type;
   type = ReportTypes.full;
-
-  let gatherDeparts = await gatherDepartHierarchy(departs);
-
+  
   let pendingReq = [];
   pendingReq.push(dbCon.query(sqlQueryList.getAbsentType));
   pendingReq.push(dbCon.query(sqlQueryList.getMultipleDivisionEmployees, [departs]));
-
-  let userTables, absentTable;
-  if (reportDaysRange <= daysToProcessAtOnce) {
-    const lowDateStr = DateUtils.getDatePartStr(daysRange.low);
-    const highDateStr = DateUtils.getDatePartStr(daysRange.high);
-    console.log(daysRange);
-   
-    const pendingReqParams = [departs, lowDateStr, highDateStr];
-    pendingReq.push(dbCon.query(sqlQueryList.getDivisionsAbsentLog, pendingReqParams));
-
-    const timekeepLogPendignReq = dbCon.query(sqlQueryList.getDivisionsTimekeepLog, pendingReqParams);
-    const [absentType, employees, absentLog] = await Promise.all(pendingReq);
-    
-    absentTable = buildAbsentTabel(absentType);
-    userTables = initUserInfoLookUpTabels(employees, absentTable.idToNameMap.length);
-    const timekeepLog = await timekeepLogPendignReq;
-
-    await constractReportData(userTables, absentTable, absentLog, timekeepLog, daysRange, type);
-  } else {
-    let daysToProccess = daysToProcessAtOnce;
-    let begin = daysRange.low;
-    let end = DateUtils.addDay(begin, daysToProccess);
-    console.log(begin, end);
-
-    const [absentType, employees] = await Promise.all(pendingReq);
-    absentTable = buildAbsentTabel(absentType);
-    userTables = initUserInfoLookUpTabels(employees, absentTable.idToNameMap.length);
-
-    while (true) {
-      if (DateUtils.areDatePartGt(begin, daysRange.high)) break;
-
-      let newDaysRange = {
-        low: begin,
-        high: end
-      };
-
-      console.log(newDaysRange);
-
-      const lowDateStr = DateUtils.getDatePartStr(newDaysRange.low);
-      const highDateStr = DateUtils.getDatePartStr(newDaysRange.high);
-      const pendingReqParams = [departs, lowDateStr, highDateStr];
-
-      const logPendingReq = []
-      logPendingReq.push(dbCon.query(sqlQueryList.getDivisionsAbsentLog, pendingReqParams));
-      logPendingReq.push(dbCon.query(sqlQueryList.getDivisionsTimekeepLog, pendingReqParams));
-
-      const [absentLog, timekeepLog] = await Promise.all(logPendingReq);
-      
-      await constractReportData(userTables, absentTable, absentLog, timekeepLog, newDaysRange, type);
-
-      begin = DateUtils.addDay(end);
-      end = DateUtils.addDay(begin, daysToProcessAtOnce);
-      if (DateUtils.areDatePartGt(end, daysRange.high)) {
-        end = daysRange.high;
-      }
-    }
-  }
   
-
-  //delete timekeepLog;
-  //delete absentLog;
-
+  let tableResult;
+  if (reportDaysRange <= DaysToProcessAtOnce) {
+    tableResult = await makeReportData(pendingReq, departs, type, daysRange);
+  } else {
+    tableResult = await makeReportDataDayRange(pendingReq, departs, type, daysRange);
+  }
+  let [userTables, absentTable] = tableResult;
+  
   type = tempType;
-
-  let result = null;
+  
+  let result;
+  let gatherDeparts = await gatherDepartHierarchy(departs);
   if ((type === ReportTypes.web) || (type === ReportTypes.general)) {
     result = buildAbsentInfoReport(userTables.Result, gatherDeparts, absentTable);
   } else if (type === ReportTypes.full) {
     result = buildFullReport(userTables.Result, gatherDeparts, absentTable);
   }
+  
+  console.timeEnd("Whole time");
   console.log(result);
   
   const used = process.memoryUsage().heapUsed / 1024 / 1024;
