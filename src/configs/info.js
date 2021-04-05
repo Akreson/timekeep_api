@@ -12,4 +12,4 @@ exports.ReportTypes = {
     fullweb: 'fullweb'
 };
 
-exports.DaysToProcessAtOnce = 1 * 365;
+exports.DaysToProcessAtOnce = 10 * 365;

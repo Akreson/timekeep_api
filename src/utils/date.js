@@ -165,6 +165,15 @@ class DateUtils {
     return dateResult;
   }
 
+  static addDayClamp(date, max, count = 1) {
+    let result = DateUtils.addDay(date, count);
+    if (DateUtils.areDatePartGt(result, max)) {
+      result = max;
+    }
+
+    return result;
+  }
+
   static daysBeetween(begin, end) {
     const count = (end - begin) / DateUtils.daysToMillisec;
     return Math.floor(count);

@@ -25,7 +25,7 @@ exports.cloneObj = obj => {
 
   for (const key in obj) {
     if(obj.hasOwnProperty(key)) {
-      result[key] = dup(obj[key]);
+      result[key] = this.cloneObj(obj[key]);
     }
   }
 
