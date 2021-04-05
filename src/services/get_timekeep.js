@@ -41,11 +41,8 @@ const setDefaultDepartTreeObj = (id, obj) => {
   return result;
 }
 
-const buildResultDepartsHierarchy = (gatheredDepartInfo, setObjFunc) => {
+const buildResultDepartsHierarchy = (gatheredDepartInfo, setObjFunc = setDefaultDepartTreeObj) => {
   let result = [];
-
-  if (setObjFunc === undefined)
-    setObjFunc = setDefaultDepartTreeObj;
 
   // создаем дерево департаментов основываясь на parentID
   for (const key in gatheredDepartInfo) {
@@ -135,18 +132,6 @@ exports.processGetUserDepartAccessList = async ldapName => {
   return result;
 }
 
-const setUserMakrsDepartTreeObj = (id, obj) => {
-  const result = {
-    id: Number(id),
-    name: obj.name,
-    isDepart: obj.isDepart,
-    haveAccess: obj.haveAccess,
-    child: obj.child
-  };
-
-  return result;
-}
-
 exports.provessGetAllDepartsWithUserMarks = async ldapName => {
   let pendingReq = [];
   pendingReq.push(getAllDepartIdMap());
@@ -158,16 +143,26 @@ exports.provessGetAllDepartsWithUserMarks = async ldapName => {
   const userAllowDepart = await dbCon.query(sqlQueryList.getUserAllowedDeparts, [userID]);
   const allowDepartsIDs = userAllowDepart.map(item => item.department_id);
 
+  for (const id in allDeparts) allDeparts[id].haveAccess = false;
+
   userAllowDepart.forEach(item => {
     allDeparts[item.department_id].haveAccess = true
   });
 
-  for (const id in allDeparts) allDeparts[id].child = [];
+  const result = [];
+  for (const id in allDeparts) {
+    let division = allDeparts[id];
 
-  const result = buildResultDepartsHierarchy(allDeparts, setUserMakrsDepartTreeObj);
-  //console.log(result);
-  //console.log(JSON.stringify(result, null, 3));
+    let resultObj = {
+      id: Number(id),
+      name: division.name,
+      access: division.haveAccess
+    };
+
+    result.push(resultObj);
+  }
   
+  result.sort((a, b) => a.name.localeCompare(b.name));
   return result;
 }
 
