@@ -12,6 +12,7 @@ const {
 
 const {
     processGetUserDepartAccessList,
+    provessGetAllDepartsWithUserMarks,
     processGetDivisionTimekeepStat,
     processGetUserTimekeepLog,
     processGetDivisionsReports
@@ -27,6 +28,21 @@ exports.getUserDepartmentsAccessList = asynchandler(async (req, res, next) => {
   }
 
   const response = await processGetUserDepartAccessList(ldapName);
+  if (!response) {
+    return next(new ErrorResponse("Ошибка", 400, "ValidationError"));
+  }
+
+  const result = succsesResponse(response);
+  res.json(result);
+});
+
+exports.getAllDepartsWithUserMarks = asynchandler(async (req, res, next) => {
+  const ldapName = req.params.ldapName;
+  if (!isValidStrParam(ldapName)) {
+    return next(new ErrorResponse("Неуказан поисковый LDAP логин", 400, "ValidationError"));
+  }
+
+  const response = await provessGetAllDepartsWithUserMarks(ldapName);
   if (!response) {
     return next(new ErrorResponse("Ошибка", 400, "ValidationError"));
   }
@@ -116,6 +132,16 @@ exports.getDivisionsReports = asynchandler(async (req, res, next) => {
     }
   } else {
     return next(new ErrorResponse("Неуказаны отделы для отчета", 400, "ValidationError"));
+  }
+
+  // TODO: continue
+  const type = {
+    report: reqData.type,
+    absent: null,
+  };
+
+  if ((reqData.onlyType === undefined) || (reqData.onlyType === null)) {
+
   }
 
   const daysRange = {

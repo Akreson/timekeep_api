@@ -101,6 +101,23 @@ const gatherDepartHierarchy = async initUserDepart => {
   return resultGatherDeparts;
 }
 
+const getAllDepartIdMap = async () => {
+  const allDepartsArr = await dbCon.query(sqlQueryList.getAllDeparts);
+  
+  const resultDepartsIdMap = {};
+  allDepartsArr.forEach(depart => {
+    resultDepartsIdMap[depart.id] = {
+        name: depart.name,
+        isDepart: depart.is_department,
+        order: depart.order,
+        branchID: depart.branch_id,
+        parentID: depart.parent_id
+    };
+  });
+
+  return resultDepartsIdMap;
+}
+
 exports.processGetUserDepartAccessList = async ldapName => {
   const userIDResult = await dbCon.query(sqlQueryList.getUserIDFromUserLDAP, [ldapName]);
 
@@ -115,6 +132,42 @@ exports.processGetUserDepartAccessList = async ldapName => {
   const gatherDeparts = await gatherDepartHierarchy(allowDepartsIDs);
   const result = buildResultDepartsHierarchy(gatherDeparts);
 
+  return result;
+}
+
+const setUserMakrsDepartTreeObj = (id, obj) => {
+  const result = {
+    id: Number(id),
+    name: obj.name,
+    isDepart: obj.isDepart,
+    haveAccess: obj.haveAccess,
+    child: obj.child
+  };
+
+  return result;
+}
+
+exports.provessGetAllDepartsWithUserMarks = async ldapName => {
+  let pendingReq = [];
+  pendingReq.push(getAllDepartIdMap());
+  pendingReq.push(dbCon.query(sqlQueryList.getUserIDFromUserLDAP, [ldapName]));
+
+  const [allDeparts, userIDResult] = await Promise.all(pendingReq);
+  const userID = userIDResult[0].id;
+
+  const userAllowDepart = await dbCon.query(sqlQueryList.getUserAllowedDeparts, [userID]);
+  const allowDepartsIDs = userAllowDepart.map(item => item.department_id);
+
+  userAllowDepart.forEach(item => {
+    allDeparts[item.department_id].haveAccess = true
+  });
+
+  for (const id in allDeparts) allDeparts[id].child = [];
+
+  const result = buildResultDepartsHierarchy(allDeparts, setUserMakrsDepartTreeObj);
+  //console.log(result);
+  //console.log(JSON.stringify(result, null, 3));
+  
   return result;
 }
 
@@ -228,39 +281,28 @@ const initUsersTimekeepLogAggr = (user, checkDate, completeArray, aggregatedUser
     };
   }
 }
-// http://127.0.0.1:6000/api/timekeep/read/user/log/pl16091980amm/31.07.2019
 
-// NOTE: логи должны обрабатываться в сортированом по временни порядке
+// логи должны обрабатываться в сортированом по временни порядке
 const setUserStricTimekeepLogTime = (userLog, log) => {
   const logTime = log.time.getTime();
-
-  //console.log(log.direction, log.time);
 
   // 1 - in, 0 - out
   if (log.direction === 1) {
     if (userLog.lastOut === null) {
-      //console.log('userLog.lastOut === null');
       userLog.firstIn = logTime;
     } else if ((userLog.firstIn === null) && (userLog.lastOut < logTime)) {
-      //console.log('(userLog.firstIn === null) && (userLog.lastOut < logTime)');
       userLog.lastOut = null;
       userLog.firstIn = logTime;
     } else if ((userLog.firstIn === null) && (userLog.lastOut === logTime)) {
-      //console.log('(userLog.firstIn === null) && (userLog.lastOut === logTime)')
       userLog.firstIn = logTime;
     }
-  }
-  else if (log.direction === 0) {
+  } else if (log.direction === 0) {
     if (userLog.lastOut === null) {
-      //console.log('userLog.lastOut === null');
       userLog.lastOut = logTime;
     } else if (logTime > userLog.lastOut) {
-      //console.log('logTime > userLog.lastOut');
       userLog.lastOut = logTime
     }
   }
-
-  //console.log(userLog);
 }
 
 const setUserNotStricTimekeepLogTime = (userLog, log) => {
@@ -825,23 +867,6 @@ const buildFullReport = (daysCount, userResultTable, gatherDeparts, absentTable)
   return result;
 }
 
-const getAllDepartIdMap = async () => {
-  const allDepartsArr = await dbCon.query(sqlQueryList.getAllDeparts);
-  
-  const resultDepartsIdMap = {};
-  allDepartsArr.forEach(depart => {
-    resultDepartsIdMap[depart.id] = {
-        name: depart.name,
-        isDepart: depart.is_department,
-        order: depart.order,
-        branchID: depart.branch_id,
-        parentID: depart.parent_id
-    };
-  });
-
-  return resultDepartsIdMap;
-}
-
 const getDepartsToRequest = async departIDs => {
   let result = null;
 
@@ -952,18 +977,13 @@ const makeReportDataDayRange = async (departs, type, daysRange) => {
 
 exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   console.log(departs.length);
-
   console.time("Whole time");
+
   const reportDaysRange = DateUtils.daysBeetween(daysRange.low, daysRange.high);
   console.log(reportDaysRange);
   
-  //let tempType = type;
-  //type = ReportTypes.full;
-  
   let [userTables, absentTable] = await makeReportDataDayRange(departs, type, daysRange);
   console.log("Days processed", userTables.daysProcessed);
-
-  //type = tempType;
   
   let gatherDeparts = await gatherDepartHierarchy(departs);
   
@@ -975,10 +995,9 @@ exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   } else if (type === ReportTypes.full) {
     result = buildFullReport(userTables.daysProcessed, userTables.Result, gatherDeparts, absentTable);
   }
+
   console.timeEnd('build report');
-  
   console.log(result);
-  
   console.timeEnd("Whole time");
   const used = process.memoryUsage().heapUsed / 1024 / 1024;
   console.log(`Used memory: ${used}`);
