@@ -404,7 +404,6 @@ exports.processGetDivisionTimekeepStat = async (divisionID, date) => {
     initUsersTimekeepLogAggr(user, timeRange.low.date, result, aggregatedUser);
   })
 
-  // TODO: set day of for all empl if it day of and log is empty
   let timekeepLog = await timekeepLogPendingReq;
   if (!timekeepLog.length) return null;
   //console.log(timekeepLog);
@@ -808,10 +807,12 @@ const buildFullReport = (daysCount, userResultTable, gatherDeparts, absentTable)
         else if (dayReportResult.day != userDayLog.day) {
           console.log("DAYS NOT EQUAl");
         }
+        //
 
         depart.users.push(userResult);
       }
 
+      // время постройки репорта очень не значительно поэму оставляю сортировку
       depart.users.sort((a, b) => a.name.localeCompare(b.name));
     }
 
@@ -982,9 +983,9 @@ exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   const used = process.memoryUsage().heapUsed / 1024 / 1024;
   console.log(`Used memory: ${used}`);
   
-  console.log(JSON.stringify(result, null, 3));
+  //console.log(JSON.stringify(result, null, 3));
 
-  return "Ok";
+  return result;
 }
 
 /*

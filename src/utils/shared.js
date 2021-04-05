@@ -32,7 +32,7 @@ exports.cloneObj = obj => {
   return result;
 }
 
-// ждет до следуйщего цикла nodejs
+// ждет до следуйщего цикла eventloop
 exports.setImmediatePromise = () => {
   return new Promise((resolve) => {
     setImmediate(() => resolve());
