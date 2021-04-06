@@ -1,9 +1,9 @@
 const mysql2 = require("mysql2");
-const DateUtils = require("../utils/date");
+const DateUtils = require("./date");
 
 const {
   setImmediatePromise
-} = require("../utils/shared");
+} = require("./shared");
 
 let GLOBAL_COUNTER = 0;
 

@@ -7,9 +7,9 @@ class DateUtils {
   static timezoneInMinutes = (new Date()).getTimezoneOffset();
   
   constructor() {}
-
+  
   // Автоматически учитывает часовой пояс
-  static dateToISOstr = date => {
+  static dateToISOstr(date) {
     if (!(date instanceof Date)) return null;
 
     let year = date.getFullYear();

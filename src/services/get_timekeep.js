@@ -1,7 +1,5 @@
-
-const mysql2 = require("mysql2");
-const DbConnection = require("../utils/db");
 const DateUtils = require("../utils/date");
+const DbConnection = require("../utils/db");
 
 const { 
   dbConnectionParams,
@@ -191,11 +189,15 @@ const buildAbsentTabel = absentType => {
     earlyOut: absentType[6],//Ранний уход
     sick: absentType[7],    //Больничный
 
-    idToNameMap: []
+    idToNameMap: [],
+    nameToIdMap: {}
   };
   //console.log(absentTable);
 
   absentTable.idToNameMap = absentType.map(item => item.name);
+  absentTable.idToNameMap.forEach((item, index) => {
+    absentTable.nameToIdMap[item] = index + 1;
+  })
 
   return absentTable;
 }
@@ -628,10 +630,45 @@ const setUserDataReportCallback = type => {
   }
 }
 
-const aggregateUserLogDayInfo = (userTables, absentTable, checkDate, dataReportCallbackFunc) => {
+const isAbsentTypePresent = (compTypeArr, lookTypeArr) => {
+  let isPresent = false;
+  compTypeArr.forEach(absentID => {
+    const isFind = lookTypeArr.findIndex(id => absentID === id);
+    if (isFind !== -1) isPresent = true;
+  });
+
+  return isPresent;
+}
+
+const setUserLogDataResult = (log, type) => {
+  let result = null;
+
+  if ((type.report === ReportTypes.web) || (type.report === ReportTypes.general)) {
+    // пустой масив в сответствие с getUserResultLogObj(-Unnamed)
+    result = {absentType: []};
+
+    if (type.absent !== null) {  
+      if (isAbsentTypePresent(log.absentType, type.absent)) {
+        result.absentType = log.absentType;
+      }
+    } else {
+      result.absentType = log.absentType;
+    }
+  } else if ((type.report === ReportTypes.full) || (type.report === ReportTypes.fullweb)) {
+    if (type.absent !== null) {
+      if (isAbsentTypePresent(log.absentType, type.absent)) {
+        result = log;
+      }
+    } else {
+      result = log;
+    }
+  }
+
+  return result;
+}
+
+const aggregateUserLogDayInfo = (userTables, absentTable, checkDate, type) => {
   const currentDate = DateUtils.getNowDate();
-  const currentTime = (new Date()).getTime();
-  const islookAtCurrDate = checkDate.getTime() === currentDate.getTime();
   const dateCustomStr = DateUtils.getDatePartStrCustom(checkDate);
 
   for (const userID in userTables.LogInfo) {
@@ -647,8 +684,8 @@ const aggregateUserLogDayInfo = (userTables, absentTable, checkDate, dataReportC
       log: null
     };
     
+    let log = null;
     if (!DateUtils.areDatePartGt(user.created, checkDate)) {
-      
       const workTime = {
         start: DateUtils.setTimeFromArr(checkDate, userLog.startTime),
         end: DateUtils.setTimeFromArr(checkDate, userLog.endTime)
@@ -664,11 +701,26 @@ const aggregateUserLogDayInfo = (userTables, absentTable, checkDate, dataReportC
         });
       }
 
-      logResult.absentType = setAbsentTypeArrToStr(absentTable, logResult.absentType, checkDate);
-      userDayResult.log = dataReportCallbackFunc(logResult);
+      log = setUserLogDataResult(logResult, type);
     }
 
-    user.daysLog.push(userDayResult);
+    if (type.report === ReportTypes.full) {
+      if (log !== null) {
+        log.absentType = setAbsentTypeArrToStr(absentTable, log.absentType, checkDate);
+        userDayResult.log = log;
+      } else {
+        userDayResult = null;
+      }
+
+      user.daysLog.push(userDayResult);
+    } else {
+      if (log !== null) {
+        log.absentType = setAbsentTypeArrToStr(absentTable, log.absentType, checkDate);
+      }
+
+      userDayResult.log = log;
+      user.daysLog.push(userDayResult);
+    }
   }
 }
 
@@ -678,8 +730,6 @@ const constractReportData = async (userTables, absentTable, absentLog, timekeepL
   let checkDate = daysRange.low;
   let blockingSince = Date.now()
   //console.log(absentLog);
-
-  let dataReportCallbackFunc = setUserDataReportCallback(type);
 
   while (!DateUtils.areDatePartGt(checkDate, daysRange.high)) {
     clearUserInfoLogObj(userTables.LogInfo);
@@ -712,7 +762,7 @@ const constractReportData = async (userTables, absentTable, absentLog, timekeepL
       setUserTimekeepLogTime(userWorkType, userLogInfo.log, timekeepElem);
     }
     
-    aggregateUserLogDayInfo(userTables, absentTable, checkDate, dataReportCallbackFunc);
+    aggregateUserLogDayInfo(userTables, absentTable, checkDate, type);
     
     ++userTables.daysProcessed;
     checkDate = DateUtils.addDay(checkDate);
@@ -830,33 +880,37 @@ const buildFullReport = (daysCount, userResultTable, gatherDeparts, absentTable)
       for (const userID in insertDepart.user) {
         let userLog = insertDepart.user[userID];
         let userDayLog = userLog.daysLog[dayIndex];
-        
-        let userResult = {
-          name: userLog.name,
-          id: userID,
-          log: userLog.daysLog[dayIndex].log
-        };
+        //console.log(userDayLog);
 
-        // NOTE: Temp solution
-        if (dayReportResult.day === null) {
-          dayReportResult.day = userDayLog.day;
+        if (userDayLog !== null) { 
+          let userResult = {
+            name: userLog.name,
+            id: userID,
+            log: userDayLog.log
+          };
+          
+          // NOTE: Temp solution
+          if (dayReportResult.day === null) {
+            dayReportResult.day = userDayLog.day;
+          }
+          else if (dayReportResult.day != userDayLog.day) {
+            console.log("DAYS NOT EQUAl");
+          }
+          //
+          
+          depart.users.push(userResult);
         }
-        else if (dayReportResult.day != userDayLog.day) {
-          console.log("DAYS NOT EQUAl");
-        }
-        //
-
-        depart.users.push(userResult);
       }
 
-      // время постройки репорта очень не значительно поэму оставляю сортировку
+      // время постройки отчета очень не значительно поэтому оставляю сортировку
       depart.users.sort((a, b) => a.name.localeCompare(b.name));
     }
 
-    const dayReport = buildResultDepartsHierarchy(copyDepartsHier, setReportDepartTreeObj);
-    dayReportResult.report = dayReport;
-
-    result.push(dayReportResult);
+    if (dayReportResult.day !== null) {
+      const dayReport = buildResultDepartsHierarchy(copyDepartsHier, setReportDepartTreeObj);
+      dayReportResult.report = dayReport;
+      result.push(dayReportResult);
+    }
   }
 
   return result;
@@ -933,6 +987,12 @@ const makeReportDataDayRange = async (departs, type, daysRange) => {
   const [absentType, employees] = await Promise.all(pendingReq);
   let absentTable = buildAbsentTabel(absentType);
   let userTables = initUserInfoLookUpTabels(employees, absentTable.idToNameMap.length);
+  //console.log(absentTable);
+  
+  let typeAbsentId = [];
+  type.absent.forEach(item => typeAbsentId.push(absentTable.nameToIdMap[item]));
+  //console.log("typeAbsentId", typeAbsentId);
+  type.absent = typeAbsentId;
 
   while (true) {
     if (DateUtils.areDatePartGt(begin, daysRange.high)) break;
@@ -947,18 +1007,13 @@ const makeReportDataDayRange = async (departs, type, daysRange) => {
     const lowDateStr = DateUtils.getDatePartStr(newDaysRange.low);
     const highDateStr = DateUtils.getDatePartStr(newDaysRange.high);
     
-    console.time('load data');
     const logPendingReq = []
     const pendingReqParams = [departs, lowDateStr, highDateStr];
     logPendingReq.push(dbCon.query(sqlQueryList.getDivisionsAbsentLog, pendingReqParams));
     logPendingReq.push(dbCon.query(sqlQueryList.getDivisionsTimekeepLog, pendingReqParams));
 
     const [absentLog, timekeepLog] = await Promise.all(logPendingReq);
-
-    console.timeEnd('load data');
-    console.time('constractReport');
     await constractReportData(userTables, absentTable, absentLog, timekeepLog, newDaysRange, type);
-    console.timeEnd('constractReport');
 
     delete absentLog;
     delete timekeepLog;
@@ -985,9 +1040,9 @@ exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   console.time('build report');
 
   let result;
-  if ((type === ReportTypes.web) || (type === ReportTypes.fullweb) || (type === ReportTypes.general)) {
+  if ((type.report === ReportTypes.web) || (type.report === ReportTypes.fullweb) || (type.report === ReportTypes.general)) {
     result = buildAbsentInfoReport(userTables.Result, gatherDeparts, absentTable);
-  } else if (type === ReportTypes.full) {
+  } else if (type.report === ReportTypes.full) {
     result = buildFullReport(userTables.daysProcessed, userTables.Result, gatherDeparts, absentTable);
   }
 
@@ -997,7 +1052,7 @@ exports.processGetDivisionsReports = async (departs, type, daysRange) => {
   const used = process.memoryUsage().heapUsed / 1024 / 1024;
   console.log(`Used memory: ${used}`);
   
-  //console.log(JSON.stringify(result, null, 3));
+  console.log(JSON.stringify(result, null, 3));
 
   return result;
 }

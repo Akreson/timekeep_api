@@ -4,7 +4,6 @@ const { logger } = require("./src/middlewares/logger");
 const { errorHandler } = require("./src/middlewares/error-handler");
 
 const timekeepRoutes = require("./src/routers/timekeep");
-//const configs = require("./src/configs/");
 
 const app = express();
 

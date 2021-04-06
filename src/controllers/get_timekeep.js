@@ -1,6 +1,5 @@
 const asynchandler = require("express-async-handler");
 const ErrorResponse = require("../utils/error-response")
-const DateUtils = require("../utils/date");
 const { ReportTypes } = require("../configs/info");
 
 const {
@@ -134,14 +133,17 @@ exports.getDivisionsReports = asynchandler(async (req, res, next) => {
     return next(new ErrorResponse("Неуказаны отделы для отчета", 400, "ValidationError"));
   }
 
-  // TODO: continue
   const type = {
     report: reqData.type,
     absent: null,
   };
 
-  if ((reqData.onlyType === undefined) || (reqData.onlyType === null)) {
+  if ((reqData.onlyType !== undefined) && (reqData.onlyType !== null)) {
+    if (!Array.isArray(reqData.onlyType)) {
+      return next(new ErrorResponse(`Неверно указан тип параметра ${onlyType}, должен быть массив`, 400, "ValidationError"));  
+    }
 
+    type.absent = reqData.onlyType.length ? reqData.onlyType : null;
   }
 
   const daysRange = {
@@ -149,7 +151,7 @@ exports.getDivisionsReports = asynchandler(async (req, res, next) => {
     high: highDate
   };
 
-  const response = await processGetDivisionsReports(reqData.departs, reqData.type, daysRange);
+  const response = await processGetDivisionsReports(reqData.departs, type, daysRange);
   if (!response) {
     return next(new ErrorResponse("Данных не найдено", 400, "ValidationError"));
   }
